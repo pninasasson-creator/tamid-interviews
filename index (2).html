@@ -1,0 +1,1528 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TAMID Interview Recorder</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700&family=Source+Sans+3:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style id="app-style">
+  :root{
+    --bg:#F2F5FA;
+    --surface:#FFFFFF;
+    --surface-2:#EAF0F8;
+    --text:#182430;
+    --text-muted:#5C6B7E;
+    --border:#DBE3EE;
+    --accent:#1E4D8C;
+    --accent-strong:#123761;
+    --accent-soft:#E7EFFA;
+    --success:#1B8A5A;
+    --success-soft:#E3F5EA;
+    --warning:#A96A0A;
+    --warning-soft:#FBEEDA;
+    --live:#C23B3B;
+    --live-soft:#FBE7E7;
+    --shadow:0 1px 2px rgba(20,36,60,.06), 0 10px 28px -14px rgba(20,36,60,.22);
+    --radius:12px;
+    color-scheme:light;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#0E1520;
+      --surface:#161F2B;
+      --surface-2:#1D2836;
+      --text:#E7ECF3;
+      --text-muted:#94A4B6;
+      --border:#2A3644;
+      --accent:#6EA0E0;
+      --accent-strong:#9BC0EE;
+      --accent-soft:#1C2C40;
+      --success:#4CBE8B;
+      --success-soft:#12261E;
+      --warning:#E0A63C;
+      --warning-soft:#2E2412;
+      --live:#E5716B;
+      --live-soft:#301A1A;
+      --shadow:0 1px 2px rgba(0,0,0,.35), 0 10px 28px -14px rgba(0,0,0,.55);
+      color-scheme:dark;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#0E1520;
+    --surface:#161F2B;
+    --surface-2:#1D2836;
+    --text:#E7ECF3;
+    --text-muted:#94A4B6;
+    --border:#2A3644;
+    --accent:#6EA0E0;
+    --accent-strong:#9BC0EE;
+    --accent-soft:#1C2C40;
+    --success:#4CBE8B;
+    --success-soft:#12261E;
+    --warning:#E0A63C;
+    --warning-soft:#2E2412;
+    --live:#E5716B;
+    --live-soft:#301A1A;
+    --shadow:0 1px 2px rgba(0,0,0,.35), 0 10px 28px -14px rgba(0,0,0,.55);
+    color-scheme:dark;
+  }
+
+  *,*::before,*::after{ box-sizing:border-box; }
+  html,body{ height:100%; }
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--text);
+    font-family:'Source Sans 3', system-ui, -apple-system, sans-serif;
+    font-size:15px;
+    line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+  }
+  h1,h2,h3,h4{ font-family:'Sora', system-ui, sans-serif; text-wrap:balance; margin:0; }
+  p{ margin:0; }
+  button{ font-family:inherit; }
+  input,select,textarea{ font-family:inherit; font-size:inherit; color:inherit; }
+  img{ max-width:100%; }
+  [hidden]{ display:none!important; }
+  ::selection{ background:var(--accent-soft); }
+  :focus-visible{ outline:2px solid var(--accent); outline-offset:2px; border-radius:4px; }
+  table{ border-collapse:collapse; width:100%; }
+  .mono{ font-family:'IBM Plex Mono', ui-monospace, monospace; font-variant-numeric:tabular-nums; }
+
+  /* ---------- Lock screen ---------- */
+  .lock-screen{
+    min-height:100vh;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:24px;
+    background:
+      radial-gradient(circle at 15% 10%, var(--accent-soft), transparent 45%),
+      var(--bg);
+  }
+  .lock-card{
+    width:100%;
+    max-width:380px;
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:16px;
+    box-shadow:var(--shadow);
+    padding:32px 28px;
+  }
+  .lock-brand{ display:flex; align-items:center; gap:14px; margin-bottom:26px; }
+  .lock-mark{
+    width:44px; height:44px; border-radius:11px;
+    background:var(--accent); color:#fff;
+    display:flex; align-items:center; justify-content:center;
+    font-family:'Sora', sans-serif; font-weight:700; font-size:19px;
+    flex-shrink:0;
+  }
+  .lock-brand h1{ font-size:18px; margin-bottom:2px; }
+  .lock-brand p{ font-size:13px; color:var(--text-muted); }
+  #lock-form{ display:flex; flex-direction:column; gap:10px; }
+  #lock-form label{ font-size:13px; font-weight:600; color:var(--text-muted); }
+  #lock-input{
+    padding:11px 13px; border-radius:9px; border:1px solid var(--border);
+    background:var(--bg); color:var(--text); letter-spacing:.04em;
+  }
+  #lock-form button{
+    margin-top:6px; padding:11px 13px; border-radius:9px; border:none;
+    background:var(--accent); color:#fff; font-weight:600; cursor:pointer;
+    transition:background .15s ease;
+  }
+  #lock-form button:hover{ background:var(--accent-strong); }
+  .lock-error{ color:var(--live); font-size:13px; margin-top:2px; }
+
+  /* ---------- App shell ---------- */
+  #app-shell{ display:flex; min-height:100vh; }
+  .sidebar{
+    width:228px; flex-shrink:0; background:var(--surface);
+    border-right:1px solid var(--border);
+    display:flex; flex-direction:column; gap:4px; padding:20px 14px;
+  }
+  .brand{ display:flex; align-items:center; gap:10px; padding:4px 8px 20px; }
+  .brand-mark{
+    width:30px; height:30px; border-radius:8px; background:var(--accent); color:#fff;
+    display:flex; align-items:center; justify-content:center; font-family:'Sora',sans-serif;
+    font-weight:700; font-size:14px; flex-shrink:0;
+  }
+  .brand-name{ font-family:'Sora',sans-serif; font-weight:700; font-size:14.5px; }
+  .nav-btn{
+    text-align:left; padding:10px 12px; border-radius:9px; border:none;
+    background:transparent; color:var(--text-muted); font-weight:600; font-size:14px;
+    cursor:pointer; transition:background .12s ease, color .12s ease;
+  }
+  .nav-btn:hover{ background:var(--surface-2); color:var(--text); }
+  .nav-btn.active{ background:var(--accent-soft); color:var(--accent-strong); }
+  .sidebar-spacer{ flex:1; }
+  .nav-btn-ghost{ color:var(--text-muted); font-weight:500; font-size:13px; }
+  .main-col{ flex:1; display:flex; flex-direction:column; min-width:0; }
+  .topbar{
+    height:60px; flex-shrink:0; border-bottom:1px solid var(--border);
+    display:flex; align-items:center; justify-content:space-between;
+    padding:0 26px; background:var(--surface);
+  }
+  #topbar-title{ font-family:'Sora',sans-serif; font-weight:700; font-size:15.5px; }
+  .sync-indicator{ font-size:12.5px; color:var(--text-muted); display:flex; align-items:center; gap:6px; }
+  .sync-dot{ width:7px; height:7px; border-radius:50%; background:var(--accent); animation:pulse 1s ease-in-out infinite; }
+  @keyframes pulse{ 0%,100%{ opacity:.35; } 50%{ opacity:1; } }
+  #view-root{ flex:1; padding:28px 30px 60px; overflow:auto; }
+
+  @media (max-width: 780px){
+    #app-shell{ flex-direction:column; }
+    .sidebar{
+      width:100%; flex-direction:row; align-items:center; overflow-x:auto;
+      border-right:none; border-bottom:1px solid var(--border); padding:10px 12px;
+    }
+    .brand{ padding:4px 10px 4px 2px; }
+    .sidebar-spacer{ display:none; }
+    .nav-btn{ white-space:nowrap; }
+    #view-root{ padding:20px 16px 48px; }
+  }
+
+  /* ---------- Shared UI atoms ---------- */
+  .view-head{ display:flex; align-items:flex-end; justify-content:space-between; gap:16px; margin-bottom:22px; flex-wrap:wrap; }
+  .view-head h2{ font-size:22px; margin-bottom:4px; }
+  .view-head .sub{ color:var(--text-muted); font-size:13.5px; }
+  .btn{
+    display:inline-flex; align-items:center; gap:8px; padding:9px 15px; border-radius:9px;
+    border:1px solid var(--border); background:var(--surface); color:var(--text);
+    font-weight:600; font-size:13.5px; cursor:pointer; transition:border-color .12s ease, background .12s ease;
+  }
+  .btn:hover{ border-color:var(--accent); }
+  .btn-primary{ background:var(--accent); border-color:var(--accent); color:#fff; }
+  .btn-primary:hover{ background:var(--accent-strong); border-color:var(--accent-strong); }
+  .btn-danger{ color:var(--live); border-color:var(--border); }
+  .btn-danger:hover{ border-color:var(--live); }
+  .btn-live{ background:var(--live); border-color:var(--live); color:#fff; }
+  .btn-live:hover{ background:#a52f2f; }
+  .btn:disabled{ opacity:.5; cursor:not-allowed; }
+  .btn-sm{ padding:6px 11px; font-size:12.5px; }
+
+  .stat-row{ display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:14px; margin-bottom:24px; }
+  .stat-card{ background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:16px 18px; }
+  .stat-card .num{ font-family:'Sora',sans-serif; font-size:26px; font-weight:700; }
+  .stat-card .label{ color:var(--text-muted); font-size:12.5px; margin-top:2px; }
+
+  .card{ background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow); }
+  .card-pad{ padding:20px; }
+  .card-head{ display:flex; align-items:center; justify-content:space-between; padding:16px 20px; border-bottom:1px solid var(--border); gap:12px; flex-wrap:wrap; }
+  .card-head h3{ font-size:15.5px; }
+
+  .table-wrap{ overflow-x:auto; }
+  th,td{ text-align:left; padding:11px 14px; border-bottom:1px solid var(--border); font-size:13.5px; vertical-align:top; }
+  th{ color:var(--text-muted); font-weight:600; font-size:12px; text-transform:uppercase; letter-spacing:.04em; white-space:nowrap; }
+  tr:last-child td{ border-bottom:none; }
+  td input, td textarea{ width:100%; padding:6px 8px; border:1px solid transparent; border-radius:6px; background:transparent; }
+  td input:hover, td textarea:hover, td input:focus, td textarea:focus{ border-color:var(--border); background:var(--bg); }
+  .empty-row td{ color:var(--text-muted); font-style:italic; text-align:center; padding:26px; }
+
+  .pill{ display:inline-flex; align-items:center; gap:5px; padding:3px 9px; border-radius:99px; font-size:12px; font-weight:600; white-space:nowrap; }
+  .pill-success{ background:var(--success-soft); color:var(--success); }
+  .pill-muted{ background:var(--surface-2); color:var(--text-muted); }
+  .pill-warning{ background:var(--warning-soft); color:var(--warning); }
+
+  .toast-root{ position:fixed; bottom:20px; right:20px; display:flex; flex-direction:column; gap:8px; z-index:999; max-width:340px; }
+  .toast{
+    background:var(--text); color:var(--bg); padding:11px 15px; border-radius:9px; font-size:13.5px;
+    box-shadow:var(--shadow); animation:toast-in .18s ease;
+  }
+  .toast-error{ background:var(--live); color:#fff; }
+  .toast-success{ background:var(--success); color:#fff; }
+  .toast-warn{ background:var(--warning); color:#12100a; }
+  @keyframes toast-in{ from{ transform:translateY(6px); opacity:0; } to{ transform:translateY(0); opacity:1; } }
+
+  /* ---------- New interview: setup ---------- */
+  .setup-grid{ display:grid; grid-template-columns:1.1fr .9fr; gap:20px; align-items:start; }
+  @media (max-width: 900px){ .setup-grid{ grid-template-columns:1fr; } }
+  .field-group{ display:flex; flex-direction:column; gap:6px; margin-bottom:16px; }
+  .field-group label{ font-size:12.5px; font-weight:600; color:var(--text-muted); text-transform:uppercase; letter-spacing:.03em; }
+  .field-group input, .field-group select, .field-group textarea{
+    padding:10px 12px; border-radius:8px; border:1px solid var(--border); background:var(--bg); color:var(--text);
+  }
+  .radio-row{ display:flex; gap:16px; margin-bottom:14px; flex-wrap:wrap; }
+  .radio-row label{ display:flex; align-items:center; gap:6px; font-size:13.5px; cursor:pointer; }
+  .q-preview-list{ list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:8px; }
+  .q-preview-list li{ font-size:13.5px; padding:9px 12px; background:var(--surface-2); border-radius:8px; display:flex; gap:10px; }
+  .q-preview-list .qnum{ color:var(--text-muted); font-family:'IBM Plex Mono',monospace; font-size:12px; flex-shrink:0; }
+
+  /* ---------- Recording screen ---------- */
+  .rec-layout{ display:grid; grid-template-columns:260px 1fr; gap:20px; align-items:start; }
+  @media (max-width: 900px){ .rec-layout{ grid-template-columns:1fr; } }
+  .rec-header{ display:flex; align-items:center; justify-content:space-between; margin-bottom:18px; flex-wrap:wrap; gap:12px; }
+  .rec-status{ display:flex; align-items:center; gap:10px; }
+  .rec-dot{ width:11px; height:11px; border-radius:50%; background:var(--live); animation:pulse 1s ease-in-out infinite; }
+  .rec-timer{ font-family:'IBM Plex Mono',monospace; font-size:20px; font-weight:500; }
+  .q-rail{ display:flex; flex-direction:column; gap:8px; }
+  .q-rail-item{ display:flex; align-items:flex-start; gap:10px; padding:10px 12px; border-radius:9px; background:var(--surface); border:1px solid var(--border); font-size:13px; }
+  .q-rail-item.current{ border-color:var(--live); background:var(--live-soft); }
+  .q-rail-item.done{ border-color:var(--success); background:var(--success-soft); }
+  .q-dot{
+    width:16px; height:16px; border-radius:50%; background:var(--border); margin-top:1px; flex-shrink:0;
+    display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:700; color:#fff;
+  }
+  .q-rail-item.done .q-dot{ background:var(--success); }
+  .q-rail-item.current .q-dot{ background:var(--live); animation:pulse 1s ease-in-out infinite; }
+  #mic-status.mic-active{ color:var(--success); font-weight:600; }
+  #mic-status.mic-error{ color:var(--live); font-weight:600; }
+  .transcript-panel{ background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:18px 20px; min-height:360px; max-height:520px; overflow-y:auto; }
+  .transcript-line{ margin-bottom:12px; font-size:14px; line-height:1.55; }
+  .transcript-tag{ display:inline-block; font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--accent); margin-right:8px; background:var(--accent-soft); padding:2px 7px; border-radius:5px; }
+  .transcript-interim{ color:var(--text-muted); font-style:italic; }
+  .rec-footer{ margin-top:18px; display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap; }
+  .hint{ color:var(--text-muted); font-size:13px; }
+  .fallback-box textarea{ width:100%; min-height:220px; padding:14px; border-radius:9px; border:1px solid var(--border); background:var(--bg); color:var(--text); resize:vertical; }
+  .warn-banner{ background:var(--warning-soft); color:var(--warning); border-radius:9px; padding:12px 14px; font-size:13.5px; margin-bottom:18px; }
+
+  /* ---------- Review screen ---------- */
+  .qa-card{ border:1px solid var(--border); border-radius:var(--radius); padding:16px 18px; margin-bottom:14px; background:var(--surface); }
+  .qa-card .q-text{ font-weight:600; margin-bottom:8px; font-size:14.5px; }
+  .qa-card textarea{ width:100%; min-height:90px; padding:10px 12px; border-radius:8px; border:1px solid var(--border); background:var(--bg); color:var(--text); resize:vertical; font-size:13.5px; }
+  .qa-card .summary-label{ font-size:11.5px; text-transform:uppercase; letter-spacing:.04em; color:var(--text-muted); margin:10px 0 4px; font-weight:600; }
+  .qa-card textarea.summary{ min-height:44px; font-size:12.5px; color:var(--text-muted); }
+  .not-asked-flag{ color:var(--warning); font-size:12px; font-weight:600; margin-left:8px; }
+
+  .doc-preview{ font-family:'Source Sans 3',sans-serif; }
+  .doc-preview h4{ font-size:14px; margin-bottom:4px; }
+</style>
+</head>
+<body>
+
+<div id="shell-root"></div>
+
+<script id="app-state" type="application/json">{"version": 1, "candidates": [{"id": "cand_seed1", "name": "John Doe", "email": "john@example.com", "date": "", "timeSlot": "", "interviewer": "", "notetaker": ""}, {"id": "cand_seed2", "name": "Jane Smith", "email": "jane@example.com", "date": "", "timeSlot": "", "interviewer": "", "notetaker": ""}], "questions": [{"id": "q_seed1", "number": 1, "text": "Can you make the meeting time?"}, {"id": "q_seed2", "number": 2, "text": "Tell us a little bit about yourself"}, {"id": "q_seed3", "number": 3, "text": "Why do you want to join TAMID?"}, {"id": "q_seed4", "number": 4, "text": "Why do you believe you are a good fit for TAMID"}, {"id": "q_seed5", "number": 5, "text": "What on your resume are you most proud of?"}, {"id": "q_seed6", "number": 6, "text": "What is something that is not on your resume that you believe we should know?"}, {"id": "q_seed7", "number": 7, "text": "Tell us about a time you struggled and how you overcame it"}, {"id": "q_seed8", "number": 8, "text": "What are your biggest strengths and weaknesses?"}, {"id": "q_seed9", "number": 9, "text": "How would your friends describe you?"}, {"id": "q_seed10", "number": 10, "text": "Give us an example of the last time you worked well in a group? What role do you usually play in a group?"}], "interviews": []}</script>
+<script>window.__SHEETS_URL__ = "https://script.google.com/macros/s/AKfycbwDav0OO2V0m3sRarhA8Nr3eA2_XNILB8aHKPf-0nvwK__a0VTsT4kWRp4mQ2urotrODQ/exec";</script>
+<script id="lib-xlsx" src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script id="app-script">
+(function(){
+  'use strict';
+
+  /* ============================================================
+     Elements captured once. These never get mutated at runtime,
+     so re-reading their textContent later always gives back the
+     original source — that's what lets this page rebuild itself
+     for republishing without duplicating any code or CSS.
+     ============================================================ */
+  var STATE_EL = document.getElementById('app-state');
+  var PASSWORD = 'EXEC26';
+
+  var state = null;
+  try { state = JSON.parse(STATE_EL.textContent); } catch (e) { state = null; }
+  if (!state || typeof state !== 'object') state = emptyState();
+
+  function emptyState(){
+    return { version: 1, candidates: [], questions: [], interviews: [] };
+  }
+  function uid(prefix){
+    return prefix + '_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+  }
+  function deepClone(o){ return JSON.parse(JSON.stringify(o)); }
+  function escapeHtml(s){
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
+      return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c];
+    });
+  }
+  function fmtDate(ts){
+    if (!ts) return '—';
+    try { return new Date(ts).toLocaleString(undefined, { month:'short', day:'numeric', year:'numeric', hour:'numeric', minute:'2-digit' }); }
+    catch(e){ return '—'; }
+  }
+  function fmtDuration(sec){
+    sec = Math.max(0, Math.round(sec || 0));
+    var m = Math.floor(sec/60), s = sec%60;
+    return m + ':' + (s<10?'0':'') + s;
+  }
+
+  /* ============================================================
+     View / session state (per-viewer, not persisted)
+     ============================================================ */
+  var currentView = 'dashboard';   // dashboard | new-interview | manage
+  var niStep = 'setup';            // setup | recording | review
+  var manageTab = 'candidates';    // candidates | questions
+  var draftCandidates = null;
+  var draftQuestions = null;
+  var setupPick = { candidateName: '', submittedBy: '', useCustomName: false };
+  var recSession = null;           // active recording session
+  var reviewDraft = null;          // Q&A draft awaiting submit
+  var isReadOnly = false;
+  var forcePasteMode = false;      // viewer manually bailed out of live mic capture
+
+  /* ============================================================
+     Text matching: turns a stream of spoken utterances into
+     question / answer segments by comparing each utterance
+     against the question bank's significant words. No network
+     call and no ML model is available inside this page, so this
+     is a deliberately transparent heuristic, not true AI — the
+     review screen lets a human fix any mis-assigned line before
+     it's saved.
+     ============================================================ */
+  var STOPWORDS = {};
+  'a an the is are was were be been being to of and or but in on at for with about as by that this it you your youre we our i im do does did can could would will shall should have has had not so if what which who whom how when where why lets let just really very kind sort okay ok yeah um uh like right now then there here also going go got get their they them he she his her'
+    .split(' ').forEach(function(w){ STOPWORDS[w] = true; });
+
+  function normalize(str){
+    return (str || '').toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+  }
+  function contentTokens(str){
+    return normalize(str).split(' ').filter(function(w){ return w.length > 1 && !STOPWORDS[w]; });
+  }
+  function scoreMatch(uTokens, qTokenSet, qTokenCount){
+    if (!qTokenCount) return 0;
+    var hit = 0;
+    for (var i=0;i<uTokens.length;i++){ if (qTokenSet[uTokens[i]]) hit++; }
+    // recall against the question's own words (interviewer reads the question, so
+    // most of its content words should show up in the utterance)
+    var qHits = 0;
+    var seen = {};
+    for (var j=0;j<uTokens.length;j++){ if (qTokenSet[uTokens[j]] && !seen[uTokens[j]]) { seen[uTokens[j]]=true; qHits++; } }
+    return qHits / qTokenCount;
+  }
+
+  function runMatching(utterances, questions){
+    var qState = questions.map(function(q){
+      var tokens = contentTokens(q.text);
+      var set = {};
+      tokens.forEach(function(t){ set[t] = true; });
+      return { q:q, tokens:tokens, set:set, asked:false, buffer:[] };
+    });
+    var opening = [];
+    var current = -1;
+    utterances.forEach(function(u){
+      var uTokens = contentTokens(u);
+      var best = -1, bestScore = 0;
+      qState.forEach(function(qs, i){
+        if (qs.tokens.length < 2) return;
+        var s = scoreMatch(uTokens, qs.set, qs.tokens.length);
+        if (s > bestScore){ bestScore = s; best = i; }
+      });
+      if (best >= 0 && bestScore >= 0.5){
+        current = best;
+        qState[best].asked = true;
+      } else if (current >= 0){
+        qState[current].buffer.push(u);
+      } else {
+        opening.push(u);
+      }
+    });
+    return {
+      opening: opening.join(' '),
+      currentQuestionId: current >= 0 ? qState[current].q.id : null,
+      qa: qState.map(function(qs){
+        return { questionId: qs.q.id, questionText: qs.q.text, asked: qs.asked, answerText: qs.buffer.join(' ') };
+      })
+    };
+  }
+
+  function summarize(text, maxSentences){
+    var sentences = (text.match(/[^.!?]+[.!?]*/g) || []).map(function(s){ return s.trim(); }).filter(Boolean);
+    if (!sentences.length) return '';
+    var ranked = sentences.slice().sort(function(a,b){ return b.length - a.length; }).slice(0, maxSentences || 2);
+    return sentences.filter(function(s){ return ranked.indexOf(s) !== -1; }).join(' ');
+  }
+
+  function buildOverallSummary(candidateName, qa, opening){
+    var answered = qa.filter(function(x){ return x.asked && x.answerText.trim(); });
+    var lines = [];
+    lines.push(candidateName + ' — ' + answered.length + ' of ' + qa.length + ' bank questions covered.');
+    answered.slice(0, 5).forEach(function(x){
+      var s = summarize(x.answerText, 1);
+      if (s) lines.push('On "' + x.questionText + '": ' + s);
+    });
+    if (!answered.length && opening) lines.push(summarize(opening, 2));
+    return lines.join(' ');
+  }
+
+  /* ============================================================
+     Google Sheets sync (standalone hosting has no Claude artifact
+     capability to lean on, so a Google Sheet — via a small Apps
+     Script web app — is the shared backend instead). SHEETS_URL is
+     baked in at build time from config.json; when it's blank, the
+     app runs local-only (this device's browser storage) and every
+     save just says so, rather than failing.
+     ============================================================ */
+  var SHEETS_URL = (typeof window.__SHEETS_URL__ === 'string') ? window.__SHEETS_URL__.trim() : '';
+  var LOCAL_KEY = 'tamid_interview_state_v1';
+
+  function sheetsConfigured(){ return /^https:\/\//.test(SHEETS_URL); }
+
+  function saveLocal(s){
+    try { localStorage.setItem(LOCAL_KEY, JSON.stringify(s)); } catch(e){}
+  }
+  function loadLocal(){
+    try {
+      var raw = localStorage.getItem(LOCAL_KEY);
+      if (!raw) return null;
+      var parsed = JSON.parse(raw);
+      return (parsed && typeof parsed === 'object') ? parsed : null;
+    } catch(e){ return null; }
+  }
+
+  function setSyncIndicator(on, label){
+    var el = document.getElementById('sync-indicator');
+    if (!el) return;
+    el.hidden = !on;
+    var textEl = el.querySelector('.sync-label');
+    if (textEl && label) textEl.textContent = label;
+  }
+
+  // Pulls the latest candidates/questions/interviews from the Sheet. Never
+  // throws outward — on any failure it just leaves whatever's already
+  // loaded (cached copy or bundled seed data) in place and says so.
+  function syncFromSheets(showToastOnFail){
+    if (!sheetsConfigured()) return Promise.resolve(false);
+    setSyncIndicator(true, 'syncing…');
+    return fetch(SHEETS_URL, { method: 'GET', cache: 'no-store' })
+      .then(function(res){ if (!res.ok) throw new Error('HTTP ' + res.status); return res.json(); })
+      .then(function(data){
+        if (data && Array.isArray(data.candidates)) state.candidates = data.candidates;
+        if (data && Array.isArray(data.questions)) state.questions = data.questions;
+        if (data && Array.isArray(data.interviews)) state.interviews = data.interviews;
+        saveLocal(state);
+        setSyncIndicator(false);
+        return true;
+      })
+      .catch(function(err){
+        setSyncIndicator(false);
+        if (showToastOnFail) toast('Couldn’t reach the Google Sheet (' + (err && err.message ? err.message : 'network error') + ') — showing the last saved copy on this device.', 'warn');
+        return false;
+      });
+  }
+
+  // Pushes one change up to the Sheet. `kind` is 'interview' | 'candidates' | 'questions'.
+  // POST body is sent as text/plain on purpose — Apps Script can't answer a
+  // CORS preflight, and a text/plain body is a "simple request" that skips it.
+  function pushToSheets(kind, payload){
+    if (!sheetsConfigured()) return Promise.resolve({ ok:false, offline:true });
+    var body = Object.assign({ type: kind }, payload);
+    return fetch(SHEETS_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(body)
+    })
+      .then(function(res){ return res.json().catch(function(){ return { ok:true }; }); })
+      .catch(function(err){ return { ok:false, error: (err && err.message) || 'network error' }; });
+  }
+
+  // Applies newState locally right away (so the UI and this device never
+  // wait on the network), then tries to push the relevant piece to the
+  // Sheet in the background. `kind` picks what gets sent: 'interview'
+  // (default — the just-submitted interview), 'candidates', or 'questions'.
+  function publishState(newState, successMsg, kind){
+    state = newState;
+    saveLocal(state);
+    renderView();
+    if (!sheetsConfigured()){
+      toast((successMsg || 'Saved') + ' — on this device only (no Google Sheet connected yet).', 'warn');
+      return Promise.resolve();
+    }
+    setSyncIndicator(true, 'saving…');
+    var payload = kind === 'candidates' ? { candidates: newState.candidates }
+                : kind === 'questions' ? { questions: newState.questions }
+                : { interview: newState.interviews[newState.interviews.length - 1] };
+    return pushToSheets(kind || 'interview', payload).then(function(result){
+      setSyncIndicator(false);
+      if (result && result.ok){
+        toast(successMsg || 'Saved', 'success');
+      } else {
+        toast('Saved on this device, but the Google Sheet didn’t update (' + (result && result.error ? result.error : 'connection issue') + '). Try “Refresh from Sheet” once you’re back online, or use the copy/export buttons as backup.', 'warn');
+      }
+    });
+  }
+
+  // Exports copy plain text to the clipboard rather than saving a file. That's
+  // deliberate: a page that can push file downloads can't be turned on for
+  // "anyone with the link" sharing, and this app needs to be link-shareable
+  // with two interviewers. Clipboard copy needs no special capability.
+  function copyText(text, successLabel){
+    return new Promise(function(resolve){
+      function ok(){ toast((successLabel || 'Copied') + ' — paste it into a spreadsheet or document.', 'success'); resolve(true); }
+      function fail(){ toast('Couldn’t copy automatically — select the text in the box and copy it manually.', 'warn'); resolve(false); }
+      if (navigator.clipboard && navigator.clipboard.writeText){
+        navigator.clipboard.writeText(text).then(ok).catch(fail);
+      } else {
+        try {
+          var ta = document.createElement('textarea');
+          ta.value = text;
+          ta.style.position = 'fixed';
+          ta.style.opacity = '0';
+          document.body.appendChild(ta);
+          ta.focus(); ta.select();
+          var didCopy = document.execCommand('copy');
+          document.body.removeChild(ta);
+          didCopy ? ok() : fail();
+        } catch (e) { fail(); }
+      }
+    });
+  }
+
+  /* ============================================================
+     Toasts
+     ============================================================ */
+  function toast(msg, kind){
+    var root = document.getElementById('toast-root');
+    if (!root) return;
+    var el = document.createElement('div');
+    el.className = 'toast' + (kind ? ' toast-' + kind : '');
+    el.textContent = msg;
+    root.appendChild(el);
+    setTimeout(function(){ el.remove(); }, 4200);
+  }
+
+  // Native confirm()/alert() are unreliable inside the artifact frame (some
+  // hosts suppress them entirely, which makes a button relying on confirm()
+  // look simply unresponsive) — this in-page modal is the reliable version.
+  function showConfirm(message, confirmLabel, onConfirm){
+    var overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(10,16,24,.55);display:flex;align-items:center;justify-content:center;z-index:999;padding:24px;';
+    overlay.innerHTML =
+      '<div class="card" style="max-width:360px;width:100%;">' +
+        '<div class="card-pad">' +
+          '<p style="margin-bottom:18px;line-height:1.5;">' + escapeHtml(message) + '</p>' +
+          '<div style="display:flex;gap:8px;justify-content:flex-end;">' +
+            '<button class="btn btn-sm" id="confirm-cancel">Cancel</button>' +
+            '<button class="btn btn-sm btn-danger" id="confirm-ok">' + escapeHtml(confirmLabel || 'Confirm') + '</button>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(overlay);
+    function close(){ overlay.remove(); }
+    overlay.addEventListener('click', function(e){ if (e.target === overlay) close(); });
+    overlay.querySelector('#confirm-cancel').addEventListener('click', close);
+    overlay.querySelector('#confirm-ok').addEventListener('click', function(){ close(); onConfirm(); });
+  }
+
+  /* ============================================================
+     CSV export
+     ============================================================ */
+  function csvValue(v){
+    var s = (v === undefined || v === null) ? '' : String(v);
+    if (/[",\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+    return s;
+  }
+  function rowsToCsv(rows){
+    return rows.map(function(r){ return r.map(csvValue).join(','); }).join('\r\n');
+  }
+  function exportAllCsv(){
+    var rows = [['Candidate Name','Question Text','Audio Link','Transcription','AI Summary','Interviewer Name','Submitted At']];
+    state.interviews.forEach(function(iv){
+      if (iv.openingRemarks && iv.openingRemarks.trim()){
+        rows.push([iv.candidateName, '(opening remarks / other)', '', iv.openingRemarks, '', iv.submittedBy, fmtDate(iv.submittedAt)]);
+      }
+      iv.qa.forEach(function(qa){
+        if (!qa.asked && !qa.answerText.trim()) return;
+        rows.push([iv.candidateName, qa.questionText, '', qa.answerText, qa.summary || '', iv.submittedBy, fmtDate(iv.submittedAt)]);
+      });
+    });
+    copyText(rowsToCsv(rows), 'Spreadsheet data copied');
+  }
+  function exportInterviewCsv(iv){
+    var rows = [['Candidate Name','Question Text','Audio Link','Transcription','AI Summary','Interviewer Name']];
+    if (iv.openingRemarks && iv.openingRemarks.trim()) rows.push([iv.candidateName, '(opening remarks / other)', '', iv.openingRemarks, '', iv.submittedBy]);
+    iv.qa.forEach(function(qa){
+      if (!qa.asked && !qa.answerText.trim()) return;
+      rows.push([iv.candidateName, qa.questionText, '', qa.answerText, qa.summary || '', iv.submittedBy]);
+    });
+    copyText(rowsToCsv(rows), 'Spreadsheet data copied');
+  }
+  function safeFilename(s){
+    return (s || 'interview').replace(/[^a-z0-9\-_]+/gi, '-').replace(/^-+|-+$/g,'').toLowerCase() || 'interview';
+  }
+  function buildInterviewDocText(iv){
+    var lines = [];
+    lines.push(iv.candidateName);
+    lines.push('Interviewed by ' + (iv.submittedBy || 'Unknown') + '  ·  ' + fmtDate(iv.submittedAt) + '  ·  Duration ' + fmtDuration(iv.durationSec));
+    lines.push('');
+    lines.push('SUMMARY');
+    lines.push(iv.overallSummary || '—');
+    if (iv.openingRemarks && iv.openingRemarks.trim()){
+      lines.push('');
+      lines.push('OPENING REMARKS / OTHER');
+      lines.push(iv.openingRemarks);
+    }
+    lines.push('');
+    lines.push('QUESTIONS & ANSWERS');
+    iv.qa.filter(function(q){ return q.asked || q.answerText.trim(); }).forEach(function(qa){
+      lines.push('');
+      lines.push('Q: ' + qa.questionText + (qa.asked ? '' : '  (not confidently detected)'));
+      lines.push('A: ' + (qa.answerText || '—'));
+      if (qa.summary) lines.push('Summary: ' + qa.summary);
+    });
+    return lines.join('\n');
+  }
+  function exportInterviewDoc(iv){
+    copyText(buildInterviewDocText(iv), 'Transcript copied');
+  }
+
+  /* ============================================================
+     Excel import (SheetJS) for the roster & question bank
+     ============================================================ */
+  function sheetRows(ws){
+    return (window.XLSX ? XLSX.utils.sheet_to_json(ws, { header:1, defval:'' }) : []);
+  }
+  function findHeaderRow(rows, mustContainAny){
+    for (var i=0;i<Math.min(rows.length,10);i++){
+      var row = rows[i].map(function(c){ return String(c||'').toLowerCase(); });
+      for (var j=0;j<mustContainAny.length;j++){
+        if (row.some(function(cell){ return cell.indexOf(mustContainAny[j]) !== -1; })) return i;
+      }
+    }
+    return -1;
+  }
+  function colIndex(headerRow, names){
+    var lower = headerRow.map(function(c){ return String(c||'').toLowerCase().trim(); });
+    for (var i=0;i<names.length;i++){
+      for (var j=0;j<lower.length;j++){ if (lower[j].indexOf(names[i]) !== -1) return j; }
+    }
+    return -1;
+  }
+  function importCandidatesFromWorkbook(wb){
+    var found = null;
+    wb.SheetNames.forEach(function(name){
+      if (found) return;
+      var rows = sheetRows(wb.Sheets[name]);
+      var hi = findHeaderRow(rows, ['candidate','name']);
+      if (hi !== -1) found = { rows: rows, hi: hi };
+    });
+    if (!found){ toast('Couldn’t find a candidate name column in that file.', 'error'); return; }
+    var header = found.rows[found.hi];
+    var iName = colIndex(header, ['candidate name','name']);
+    var iEmail = colIndex(header, ['email']);
+    var iDate = colIndex(header, ['date']);
+    var iSlot = colIndex(header, ['time slot','time']);
+    var iInterviewer = colIndex(header, ['interviewer']);
+    var iNotetaker = colIndex(header, ['notetaker','note taker']);
+    var out = [];
+    for (var r=found.hi+1; r<found.rows.length; r++){
+      var row = found.rows[r];
+      var name = iName!==-1 ? String(row[iName]||'').trim() : '';
+      if (!name) continue;
+      out.push({
+        id: uid('cand'),
+        name: name,
+        email: iEmail!==-1 ? String(row[iEmail]||'').trim() : '',
+        date: iDate!==-1 ? String(row[iDate]||'').trim() : '',
+        timeSlot: iSlot!==-1 ? String(row[iSlot]||'').trim() : '',
+        interviewer: iInterviewer!==-1 ? String(row[iInterviewer]||'').trim() : '',
+        notetaker: iNotetaker!==-1 ? String(row[iNotetaker]||'').trim() : ''
+      });
+    }
+    if (!out.length){ toast('No candidate rows found under that header.', 'error'); return; }
+    draftCandidates = out;
+    toast('Loaded ' + out.length + ' candidate' + (out.length===1?'':'s') + ' from the file — review, then Save changes.', 'success');
+    renderView();
+  }
+  function importQuestionsFromWorkbook(wb){
+    var found = null;
+    wb.SheetNames.forEach(function(name){
+      if (found) return;
+      var rows = sheetRows(wb.Sheets[name]);
+      var hi = findHeaderRow(rows, ['question']);
+      if (hi !== -1) found = { rows: rows, hi: hi };
+    });
+    if (!found){ toast('Couldn’t find a question column in that file.', 'error'); return; }
+    var header = found.rows[found.hi];
+    var iText = colIndex(header, ['question text','question']);
+    var out = [];
+    for (var r=found.hi+1; r<found.rows.length; r++){
+      var row = found.rows[r];
+      var text = iText!==-1 ? String(row[iText]||'').trim() : '';
+      if (!text) continue;
+      out.push({ id: uid('q'), number: out.length+1, text: text });
+    }
+    if (!out.length){ toast('No question rows found under that header.', 'error'); return; }
+    draftQuestions = out;
+    toast('Loaded ' + out.length + ' question' + (out.length===1?'':'s') + ' from the file — review, then Save changes.', 'success');
+    renderView();
+  }
+
+  /* ============================================================
+     Shell: lock screen + nav (static chrome, rebuilt on every load)
+     ============================================================ */
+  var BODY_SHELL_HTML =
+    '<div id="lock-screen" class="lock-screen">' +
+      '<div class="lock-card">' +
+        '<div class="lock-brand">' +
+          '<span class="lock-mark">T</span>' +
+          '<div><h1>TAMID Interview Recorder</h1><p>Executive board access only</p></div>' +
+        '</div>' +
+        '<form id="lock-form">' +
+          '<label for="lock-input">Access code</label>' +
+          '<input id="lock-input" type="password" autocomplete="off" placeholder="Enter access code" required>' +
+          '<button type="submit">Unlock</button>' +
+          '<p id="lock-error" class="lock-error" hidden>That code isn’t right — check with the exec board.</p>' +
+        '</form>' +
+      '</div>' +
+    '</div>' +
+    '<div id="app-shell" hidden>' +
+      '<nav class="sidebar">' +
+        '<div class="brand"><span class="brand-mark">T</span><span class="brand-name">TAMID Interviews</span></div>' +
+        '<button class="nav-btn" data-nav="dashboard">Dashboard</button>' +
+        '<button class="nav-btn" data-nav="new-interview">New Interview</button>' +
+        '<button class="nav-btn" data-nav="manage">Candidates &amp; Questions</button>' +
+        '<div class="sidebar-spacer"></div>' +
+        '<button class="nav-btn nav-btn-ghost" id="lock-again-btn">Lock app</button>' +
+      '</nav>' +
+      '<div class="main-col">' +
+        '<header class="topbar">' +
+          '<div id="topbar-title"></div>' +
+          '<div class="topbar-right"><span id="sync-indicator" class="sync-indicator" hidden><span class="sync-dot"></span><span class="sync-label">Saving…</span></span></div>' +
+        '</header>' +
+        '<main id="view-root"></main>' +
+      '</div>' +
+    '</div>';
+
+  function initShell(){
+    document.getElementById('shell-root').innerHTML = BODY_SHELL_HTML;
+
+    var unlocked = false;
+    try { unlocked = sessionStorage.getItem('tamid_unlocked') === '1'; } catch (e) {}
+
+    document.getElementById('lock-screen').hidden = unlocked;
+    document.getElementById('app-shell').hidden = !unlocked;
+
+    document.getElementById('lock-form').addEventListener('submit', function(e){
+      e.preventDefault();
+      var val = document.getElementById('lock-input').value.trim();
+      if (val.toUpperCase() === PASSWORD){
+        try { sessionStorage.setItem('tamid_unlocked', '1'); } catch (err) {}
+        document.getElementById('lock-screen').hidden = true;
+        document.getElementById('app-shell').hidden = false;
+        boot();
+      } else {
+        document.getElementById('lock-error').hidden = false;
+      }
+    });
+    document.getElementById('lock-again-btn').addEventListener('click', function(){
+      try { sessionStorage.removeItem('tamid_unlocked'); } catch (err) {}
+      document.getElementById('lock-screen').hidden = false;
+      document.getElementById('app-shell').hidden = true;
+      document.getElementById('lock-input').value = '';
+      document.getElementById('lock-input').focus();
+    });
+
+    Array.prototype.forEach.call(document.querySelectorAll('.nav-btn[data-nav]'), function(btn){
+      btn.addEventListener('click', function(){
+        if (recSession){ toast('Stop the current recording before switching pages.', 'warn'); return; }
+        currentView = btn.dataset.nav;
+        niStep = 'setup';
+        renderView();
+      });
+    });
+
+    if (unlocked) boot();
+  }
+
+  function boot(){
+    // Show whatever we've got immediately (bundled seed data, or a locally
+    // cached copy from a previous sync) — then refresh from the Sheet in
+    // the background so the UI never sits on a blank screen waiting.
+    var cached = loadLocal();
+    if (cached) state = cached;
+    currentView = 'dashboard';
+    renderView();
+    syncFromSheets(true);
+  }
+
+  /* ============================================================
+     View dispatch
+     ============================================================ */
+  var TITLES = { dashboard: 'Dashboard', 'new-interview': 'New Interview', manage: 'Candidates & Questions' };
+
+  function updateNavActive(){
+    Array.prototype.forEach.call(document.querySelectorAll('.nav-btn[data-nav]'), function(btn){
+      btn.classList.toggle('active', btn.dataset.nav === currentView);
+    });
+  }
+
+  function renderView(){
+    var oldRoot = document.getElementById('view-root');
+    if (!oldRoot) return;
+    // Swap in a fresh, listener-free container before wiring it up again —
+    // each wireX() below attaches delegated listeners to #view-root, and
+    // since the element itself normally persists across renders (only its
+    // innerHTML changes), reusing it would stack duplicate listeners from
+    // every previous render. Cloning (shallow) drops any listeners the old
+    // node carried while keeping the same id/position in the page.
+    var root = oldRoot.cloneNode(false);
+    oldRoot.parentNode.replaceChild(root, oldRoot);
+
+    updateNavActive();
+    var titleEl = document.getElementById('topbar-title');
+    if (titleEl) titleEl.textContent = TITLES[currentView] || '';
+
+    if (currentView === 'dashboard'){ root.innerHTML = renderDashboardHtml(); wireDashboard(); }
+    else if (currentView === 'manage'){ root.innerHTML = renderManageHtml(); wireManage(); }
+    else if (currentView === 'new-interview'){ root.innerHTML = renderNewInterviewHtml(); wireNewInterview(); }
+  }
+
+  /* ============================================================
+     Dashboard
+     ============================================================ */
+  function renderDashboardHtml(){
+    var interviews = state.interviews.slice().sort(function(a,b){ return (b.submittedAt||0) - (a.submittedAt||0); });
+    var candidateCount = state.candidates.length;
+    var interviewedNames = {};
+    interviews.forEach(function(iv){ interviewedNames[iv.candidateName.trim().toLowerCase()] = true; });
+    var remaining = state.candidates.filter(function(c){ return !interviewedNames[c.name.trim().toLowerCase()]; }).length;
+
+    var rows = interviews.map(function(iv){
+      var answered = iv.qa.filter(function(q){ return q.asked; }).length;
+      return '<tr>' +
+        '<td><strong>' + escapeHtml(iv.candidateName) + '</strong></td>' +
+        '<td>' + escapeHtml(iv.submittedBy || '—') + '</td>' +
+        '<td class="mono">' + fmtDate(iv.submittedAt) + '</td>' +
+        '<td><span class="pill ' + (answered === state.questions.length && state.questions.length ? 'pill-success' : 'pill-muted') + '">' + answered + ' / ' + state.questions.length + '</span></td>' +
+        '<td class="mono">' + fmtDuration(iv.durationSec) + '</td>' +
+        '<td>' +
+          '<div style="display:flex;gap:6px;flex-wrap:wrap;">' +
+          '<button class="btn btn-sm" data-action="view-doc" data-id="' + iv.id + '">View document</button>' +
+          '<button class="btn btn-sm" data-action="export-csv" data-id="' + iv.id + '">Export CSV</button>' +
+          '</div>' +
+        '</td>' +
+      '</tr>';
+    }).join('');
+
+    return '' +
+    (sheetsConfigured() ?
+      '<div class="card card-pad" style="margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">' +
+        '<span class="hint">🟢 Connected to the shared Google Sheet — every submission syncs there automatically.</span>' +
+        '<button class="btn btn-sm" data-action="refresh-sheet">Refresh from Sheet</button>' +
+      '</div>'
+      :
+      '<div class="warn-banner">No Google Sheet is connected — everything here is saved only on this device. Ask whoever set up the app for the shared-sheet link, or see “Candidates &amp; Questions” for setup notes.</div>'
+    ) +
+    '<div class="view-head">' +
+      '<div><h2>Interview log</h2><p class="sub">Every submitted interview' + (sheetsConfigured() ? ', synced across the exec board.' : ' on this device.') + '</p></div>' +
+      '<button class="btn btn-primary" data-action="export-all">Export all as spreadsheet (CSV)</button>' +
+    '</div>' +
+    '<div class="stat-row">' +
+      '<div class="stat-card"><div class="num">' + candidateCount + '</div><div class="label">Candidates on roster</div></div>' +
+      '<div class="stat-card"><div class="num">' + interviews.length + '</div><div class="label">Interviews submitted</div></div>' +
+      '<div class="stat-card"><div class="num">' + remaining + '</div><div class="label">Not yet interviewed</div></div>' +
+      '<div class="stat-card"><div class="num">' + state.questions.length + '</div><div class="label">Questions in bank</div></div>' +
+    '</div>' +
+    '<div class="card">' +
+      '<div class="card-head"><h3>Submitted interviews</h3></div>' +
+      '<div class="table-wrap"><table><thead><tr><th>Candidate</th><th>Submitted by</th><th>Submitted</th><th>Coverage</th><th>Length</th><th>Document</th></tr></thead><tbody>' +
+        (rows || '<tr class="empty-row"><td colspan="6">No interviews yet — start one from “New Interview.”</td></tr>') +
+      '</tbody></table></div>' +
+    '</div>';
+  }
+
+  function wireDashboard(){
+    var root = document.getElementById('view-root');
+    root.addEventListener('click', function(e){
+      var btn = e.target.closest('[data-action]');
+      if (!btn) return;
+      var action = btn.dataset.action;
+      if (action === 'export-all') exportAllCsv();
+      else if (action === 'view-doc'){
+        var iv = state.interviews.find(function(x){ return x.id === btn.dataset.id; });
+        if (iv) openDocModal(iv);
+      } else if (action === 'export-csv'){
+        var iv2 = state.interviews.find(function(x){ return x.id === btn.dataset.id; });
+        if (iv2) exportInterviewCsv(iv2);
+      } else if (action === 'refresh-sheet'){
+        syncFromSheets(true).then(function(ok){ if (ok) toast('Refreshed from the Sheet.', 'success'); renderView(); });
+      }
+    });
+  }
+
+  function openDocModal(iv){
+    var overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(10,16,24,.55);display:flex;align-items:center;justify-content:center;z-index:998;padding:24px;';
+    var qaHtml = iv.qa.filter(function(q){ return q.asked || q.answerText.trim(); }).map(function(qa){
+      return '<div class="qa-card" style="cursor:default;">' +
+        '<div class="q-text">' + escapeHtml(qa.questionText) + (qa.asked ? '' : ' <span class="not-asked-flag">not confidently detected</span>') + '</div>' +
+        '<div style="white-space:pre-wrap;">' + escapeHtml(qa.answerText || '—') + '</div>' +
+        (qa.summary ? '<div class="summary-label">Summary</div><div style="font-size:12.5px;color:var(--text-muted);">' + escapeHtml(qa.summary) + '</div>' : '') +
+      '</div>';
+    }).join('');
+    overlay.innerHTML =
+      '<div class="card" style="max-width:680px;width:100%;max-height:85vh;overflow-y:auto;">' +
+        '<div class="card-head"><h3>' + escapeHtml(iv.candidateName) + '</h3><button class="btn btn-sm" id="doc-close">Close</button></div>' +
+        '<div class="card-pad doc-preview">' +
+          '<p class="hint" style="margin-bottom:16px;">Interviewed by ' + escapeHtml(iv.submittedBy||'—') + ' &middot; ' + fmtDate(iv.submittedAt) + ' &middot; ' + fmtDuration(iv.durationSec) + '</p>' +
+          '<h4>Summary</h4><p style="margin-bottom:18px;line-height:1.6;">' + escapeHtml(iv.overallSummary || '—') + '</p>' +
+          (iv.openingRemarks && iv.openingRemarks.trim() ? '<h4>Opening remarks / other</h4><p style="margin-bottom:18px;white-space:pre-wrap;">' + escapeHtml(iv.openingRemarks) + '</p>' : '') +
+          qaHtml +
+          '<div style="display:flex;gap:8px;margin-top:14px;">' +
+            '<button class="btn btn-primary btn-sm" id="doc-export-html">Download as document (.html)</button>' +
+            '<button class="btn btn-sm" id="doc-export-csv">Download as spreadsheet (.csv)</button>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(overlay);
+    overlay.addEventListener('click', function(e){ if (e.target === overlay) overlay.remove(); });
+    overlay.querySelector('#doc-close').addEventListener('click', function(){ overlay.remove(); });
+    overlay.querySelector('#doc-export-html').addEventListener('click', function(){ exportInterviewDoc(iv); });
+    overlay.querySelector('#doc-export-csv').addEventListener('click', function(){ exportInterviewCsv(iv); });
+  }
+
+  /* ============================================================
+     Manage: candidates & question bank
+     ============================================================ */
+  function ensureDrafts(){
+    if (!draftCandidates) draftCandidates = deepClone(state.candidates);
+    if (!draftQuestions) draftQuestions = deepClone(state.questions);
+  }
+
+  function renderManageHtml(){
+    ensureDrafts();
+    var candRows = draftCandidates.map(function(c, i){
+      return '<tr>' +
+        '<td><input data-field="name" data-i="' + i + '" value="' + escapeHtml(c.name) + '" placeholder="Full name"></td>' +
+        '<td><input data-field="email" data-i="' + i + '" value="' + escapeHtml(c.email) + '" placeholder="email@school.edu"></td>' +
+        '<td><input data-field="date" data-i="' + i + '" value="' + escapeHtml(c.date) + '" placeholder="e.g. Sep 5"></td>' +
+        '<td><input data-field="timeSlot" data-i="' + i + '" value="' + escapeHtml(c.timeSlot) + '" placeholder="e.g. 3:00pm"></td>' +
+        '<td><input data-field="interviewer" data-i="' + i + '" value="' + escapeHtml(c.interviewer) + '" placeholder="Exec name"></td>' +
+        '<td><input data-field="notetaker" data-i="' + i + '" value="' + escapeHtml(c.notetaker) + '" placeholder="Exec name"></td>' +
+        '<td><button class="btn btn-sm btn-danger" data-action="del-candidate" data-i="' + i + '">Remove</button></td>' +
+      '</tr>';
+    }).join('');
+
+    var qRows = draftQuestions.map(function(q, i){
+      return '<tr>' +
+        '<td class="mono" style="width:36px;">' + (i+1) + '</td>' +
+        '<td><textarea data-field="text" data-i="' + i + '" rows="1" style="min-height:38px;">' + escapeHtml(q.text) + '</textarea></td>' +
+        '<td><div style="display:flex;gap:4px;">' +
+          '<button class="btn btn-sm" data-action="q-up" data-i="' + i + '" ' + (i===0?'disabled':'') + ' title="Move up">↑</button>' +
+          '<button class="btn btn-sm" data-action="q-down" data-i="' + i + '" ' + (i===draftQuestions.length-1?'disabled':'') + ' title="Move down">↓</button>' +
+          '<button class="btn btn-sm btn-danger" data-action="del-question" data-i="' + i + '">Remove</button>' +
+        '</div></td>' +
+      '</tr>';
+    }).join('');
+
+    return '' +
+    '<div class="view-head">' +
+      '<div><h2>Candidates &amp; question bank</h2><p class="sub">Upload the roster or question list anytime — changes sync to both exec board members once saved.</p></div>' +
+      (sheetsConfigured() ? '<button class="btn btn-sm" data-action="refresh-sheet">Refresh from Sheet</button>' : '') +
+    '</div>' +
+    (sheetsConfigured() ? '' :
+      '<div class="warn-banner">No Google Sheet is connected yet, so “Save changes” below only saves on this device — it won’t reach the other exec board member. Whoever set up the app needs to paste the Apps Script URL into config.json and rebuild/redeploy the site to turn this on.</div>'
+    ) +
+    '<div style="display:flex;gap:10px;margin-bottom:18px;">' +
+      '<button class="btn ' + (manageTab==='candidates'?'btn-primary':'') + '" data-action="tab-candidates">Candidates</button>' +
+      '<button class="btn ' + (manageTab==='questions'?'btn-primary':'') + '" data-action="tab-questions">Question bank</button>' +
+    '</div>' +
+
+    '<div id="tab-candidates" ' + (manageTab!=='candidates'?'hidden':'') + '>' +
+      '<div class="card" style="margin-bottom:18px;">' +
+        '<div class="card-head">' +
+          '<h3>Candidate roster</h3>' +
+          '<div style="display:flex;gap:8px;flex-wrap:wrap;">' +
+            '<label class="btn btn-sm" style="cursor:pointer;">Upload Excel<input type="file" id="upload-candidates" accept=".xlsx,.xls,.csv" hidden></label>' +
+            '<button class="btn btn-sm" data-action="add-candidate">+ Add candidate</button>' +
+            '<button class="btn btn-sm btn-primary" data-action="save-candidates">Save changes</button>' +
+          '</div>' +
+        '</div>' +
+        '<div class="table-wrap"><table><thead><tr><th>Name</th><th>Email</th><th>Date</th><th>Time slot</th><th>Interviewer</th><th>Notetaker</th><th></th></tr></thead><tbody>' +
+          (candRows || '<tr class="empty-row"><td colspan="7">No candidates yet — upload your roster or add one manually.</td></tr>') +
+        '</tbody></table></div>' +
+      '</div>' +
+    '</div>' +
+
+    '<div id="tab-questions" ' + (manageTab!=='questions'?'hidden':'') + '>' +
+      '<div class="card">' +
+        '<div class="card-head">' +
+          '<h3>Question bank</h3>' +
+          '<div style="display:flex;gap:8px;flex-wrap:wrap;">' +
+            '<label class="btn btn-sm" style="cursor:pointer;">Upload Excel<input type="file" id="upload-questions" accept=".xlsx,.xls,.csv" hidden></label>' +
+            '<button class="btn btn-sm" data-action="add-question">+ Add question</button>' +
+            '<button class="btn btn-sm btn-primary" data-action="save-questions">Save changes</button>' +
+          '</div>' +
+        '</div>' +
+        '<div class="table-wrap"><table><thead><tr><th>#</th><th>Question text</th><th></th></tr></thead><tbody>' +
+          (qRows || '<tr class="empty-row"><td colspan="3">No questions yet — upload your list or add one manually.</td></tr>') +
+        '</tbody></table></div>' +
+      '</div>' +
+    '</div>';
+  }
+
+  function wireManage(){
+    var root = document.getElementById('view-root');
+
+    root.addEventListener('input', function(e){
+      var t = e.target;
+      if (t.dataset && t.dataset.field !== undefined && t.dataset.i !== undefined){
+        var i = parseInt(t.dataset.i, 10);
+        if (root.contains(document.getElementById('tab-candidates')) && draftCandidates[i] && (t.dataset.field in draftCandidates[i])){
+          draftCandidates[i][t.dataset.field] = t.value;
+        } else if (draftQuestions[i] && (t.dataset.field in draftQuestions[i])){
+          draftQuestions[i][t.dataset.field] = t.value;
+        }
+      }
+    });
+
+    root.addEventListener('click', function(e){
+      var btn = e.target.closest('[data-action]');
+      if (!btn) return;
+      var action = btn.dataset.action;
+      var i = btn.dataset.i !== undefined ? parseInt(btn.dataset.i, 10) : -1;
+
+      if (action === 'tab-candidates'){ manageTab = 'candidates'; renderView(); }
+      else if (action === 'tab-questions'){ manageTab = 'questions'; renderView(); }
+      else if (action === 'refresh-sheet'){
+        syncFromSheets(true).then(function(ok){ draftCandidates = null; draftQuestions = null; if (ok) toast('Refreshed from the Sheet.', 'success'); renderView(); });
+      }
+      else if (action === 'add-candidate'){
+        draftCandidates.push({ id: uid('cand'), name:'', email:'', date:'', timeSlot:'', interviewer:'', notetaker:'' });
+        renderView();
+      }
+      else if (action === 'del-candidate'){ draftCandidates.splice(i,1); renderView(); }
+      else if (action === 'add-question'){
+        draftQuestions.push({ id: uid('q'), number: draftQuestions.length+1, text:'' });
+        renderView();
+      }
+      else if (action === 'del-question'){ draftQuestions.splice(i,1); renderView(); }
+      else if (action === 'q-up' && i > 0){ var tmp=draftQuestions[i-1]; draftQuestions[i-1]=draftQuestions[i]; draftQuestions[i]=tmp; renderView(); }
+      else if (action === 'q-down' && i < draftQuestions.length-1){ var tmp2=draftQuestions[i+1]; draftQuestions[i+1]=draftQuestions[i]; draftQuestions[i]=tmp2; renderView(); }
+      else if (action === 'save-candidates'){
+        var cleaned = draftCandidates.filter(function(c){ return c.name && c.name.trim(); });
+        var ns = deepClone(state); ns.candidates = cleaned;
+        publishState(ns, 'Roster saved (' + cleaned.length + ' candidates)', 'candidates').then(function(){ draftCandidates = null; });
+      }
+      else if (action === 'save-questions'){
+        var cleanedQ = draftQuestions.filter(function(q){ return q.text && q.text.trim(); }).map(function(q,idx){ q.number = idx+1; return q; });
+        var ns2 = deepClone(state); ns2.questions = cleanedQ;
+        publishState(ns2, 'Question bank saved (' + cleanedQ.length + ' questions)', 'questions').then(function(){ draftQuestions = null; });
+      }
+    });
+
+    var upC = document.getElementById('upload-candidates');
+    if (upC) upC.addEventListener('change', function(e){ handleWorkbookUpload(e, importCandidatesFromWorkbook); });
+    var upQ = document.getElementById('upload-questions');
+    if (upQ) upQ.addEventListener('change', function(e){ handleWorkbookUpload(e, importQuestionsFromWorkbook); });
+  }
+
+  function handleWorkbookUpload(e, handler){
+    var file = e.target.files && e.target.files[0];
+    if (!file) return;
+    if (!window.XLSX){ toast('The spreadsheet reader hasn’t finished loading — try again in a moment.', 'error'); return; }
+    file.arrayBuffer().then(function(buf){
+      var wb = XLSX.read(buf, { type:'array' });
+      handler(wb);
+    }).catch(function(){ toast('Couldn’t read that file.', 'error'); });
+    e.target.value = '';
+  }
+
+  /* ============================================================
+     New interview: setup -> recording -> review
+     ============================================================ */
+  function renderNewInterviewHtml(){
+    if (niStep === 'recording') return renderRecordingHtml();
+    if (niStep === 'review') return renderReviewHtml();
+    return renderSetupHtml();
+  }
+
+  function renderSetupHtml(){
+    var options = state.candidates.map(function(c){
+      return '<option value="' + escapeHtml(c.name) + '">' + escapeHtml(c.name) + (c.timeSlot ? ' — ' + escapeHtml(c.timeSlot) : '') + '</option>';
+    }).join('');
+    var qList = state.questions.map(function(q,i){
+      return '<li><span class="qnum">' + (i+1) + '</span><span>' + escapeHtml(q.text) + '</span></li>';
+    }).join('');
+    var srSupported = !!(window.SpeechRecognition || window.webkitSpeechRecognition);
+
+    return '' +
+    '<button class="btn btn-sm" id="back-to-dashboard" style="margin-bottom:14px;">← Back to dashboard</button>' +
+    '<div class="view-head"><div><h2>Start an interview</h2><p class="sub">Set who you’re interviewing, then just hit record — no clicking during the conversation.</p></div></div>' +
+    (srSupported ? '' : '<div class="warn-banner">Live transcription needs Chrome (desktop or Android). This browser will still let you record audio and paste in a transcript afterward.</div>') +
+    '<div class="card card-pad" style="margin-bottom:16px;background:var(--accent-soft);border-color:var(--accent);">' +
+      '<h3 style="margin-bottom:8px;font-size:14px;">🎙️ Before you begin — turning on the mic</h3>' +
+      '<ol style="margin:0 0 0 18px;padding:0;font-size:13px;line-height:1.7;color:var(--text);">' +
+        '<li>Open this link in <strong>Chrome</strong> (Safari/other browsers don’t support live transcription) — and make sure it’s open in its own browser tab, not inside another app.</li>' +
+        '<li>Tap <strong>Begin interview</strong> below. Chrome will pop up asking for microphone permission — tap <strong>Allow</strong>. This prompt only appears the first time.</li>' +
+        '<li>If nothing pops up, or it says “microphone unavailable”: tap the 🔒 (or ⓘ) icon at the left of the address bar → <strong>Site settings / Permissions</strong> → set <strong>Microphone</strong> to <strong>Allow</strong> → reload the page and try again.</li>' +
+        '<li>Once it’s working you’ll see “<strong>listening…</strong>” next to the candidate’s name, changing to “<strong>hearing you…</strong>” while someone’s talking — that’s your confirmation it’s recording.</li>' +
+      '</ol>' +
+    '</div>' +
+    '<div class="setup-grid">' +
+      '<div class="card card-pad">' +
+        '<div class="field-group">' +
+          '<label>Candidate</label>' +
+          '<select id="candidate-select">' +
+            '<option value="">' + (options ? 'Choose from roster…' : 'No roster loaded yet') + '</option>' +
+            options +
+            '<option value="__other__">Not on the list — type a name</option>' +
+          '</select>' +
+        '</div>' +
+        '<div class="field-group" id="custom-name-group" hidden>' +
+          '<label>Candidate name</label>' +
+          '<input id="candidate-custom" type="text" placeholder="Full name">' +
+        '</div>' +
+        '<div class="field-group">' +
+          '<label>Submitted by (interviewer)</label>' +
+          '<input id="submitted-by" type="text" placeholder="Your name" value="' + escapeHtml(setupPick.submittedBy) + '">' +
+        '</div>' +
+        '<button class="btn btn-primary" id="begin-btn" style="width:100%;justify-content:center;padding:12px;">Begin interview</button>' +
+      '</div>' +
+      '<div class="card card-pad">' +
+        '<h3 style="margin-bottom:12px;font-size:14.5px;">Question bank loaded (' + state.questions.length + ')</h3>' +
+        (qList ? '<ul class="q-preview-list">' + qList + '</ul>' : '<p class="hint">No questions loaded — add them under “Candidates &amp; Questions.”</p>') +
+      '</div>' +
+    '</div>';
+  }
+
+  function wireNewInterview(){
+    if (niStep === 'setup') return wireSetup();
+    if (niStep === 'recording') return wireRecording();
+    if (niStep === 'review') return wireReview();
+  }
+
+  function wireSetup(){
+    var root = document.getElementById('view-root');
+    document.getElementById('back-to-dashboard').addEventListener('click', function(){
+      currentView = 'dashboard';
+      renderView();
+    });
+    var sel = document.getElementById('candidate-select');
+    var customGroup = document.getElementById('custom-name-group');
+    var customInput = document.getElementById('candidate-custom');
+    sel.addEventListener('change', function(){
+      customGroup.hidden = sel.value !== '__other__';
+      if (sel.value === '__other__') customInput.focus();
+    });
+    root.querySelector('#submitted-by').addEventListener('input', function(e){ setupPick.submittedBy = e.target.value; });
+    root.querySelector('#begin-btn').addEventListener('click', function(){
+      var name = sel.value === '__other__' ? customInput.value.trim() : sel.value;
+      var submittedBy = document.getElementById('submitted-by').value.trim();
+      if (!name){ toast('Choose or type the candidate’s name first.', 'warn'); return; }
+      if (!submittedBy){ toast('Enter your name in “Submitted by” first.', 'warn'); return; }
+      setupPick.candidateName = name;
+      setupPick.submittedBy = submittedBy;
+      forcePasteMode = false;
+      niStep = 'recording';
+      renderView();
+      startRecording();
+    });
+  }
+
+  /* ---------- Recording ---------- */
+  function renderRecordingHtml(){
+    var srSupported = !!(window.SpeechRecognition || window.webkitSpeechRecognition);
+    var qItems = state.questions.map(function(q, i){
+      return '<div class="q-rail-item" data-qid="' + q.id + '"><span class="q-dot"></span><span>' + escapeHtml(q.text) + '</span></div>';
+    }).join('');
+
+    if (!srSupported || forcePasteMode){
+      return '' +
+      '<button class="btn btn-sm" id="back-to-setup" style="margin-bottom:14px;">← Back</button>' +
+      '<div class="view-head"><div><h2>Recording — ' + escapeHtml(setupPick.candidateName) + '</h2><p class="sub">' + (srSupported ? 'Switched to manual transcript entry.' : 'Live transcription isn’t supported in this browser.') + '</p></div></div>' +
+      '<div class="card card-pad fallback-box">' +
+        '<p class="hint" style="margin-bottom:10px;">Dictate the interview into your phone’s Notes/Voice Memos app (or type it up), then paste the transcript below — the app will still sort it into the right questions automatically.</p>' +
+        '<textarea id="fallback-transcript" placeholder="Paste or type the interview transcript here when you’re done…"></textarea>' +
+        '<div class="rec-footer"><span></span><button class="btn btn-primary" id="fallback-finish">Sort into questions &amp; review</button></div>' +
+      '</div>';
+    }
+
+    return '' +
+    '<div class="rec-header">' +
+      '<div class="rec-status"><button class="btn btn-sm" id="back-to-setup" style="margin-right:10px;">← Back</button><span class="rec-dot"></span><strong>' + escapeHtml(setupPick.candidateName) + '</strong><span class="hint" id="mic-status">starting microphone…</span></div>' +
+      '<div style="display:flex;align-items:center;gap:16px;">' +
+        '<span class="rec-timer" id="rec-timer">0:00</span>' +
+        '<button class="btn btn-live" id="stop-btn">Stop &amp; review</button>' +
+      '</div>' +
+    '</div>' +
+    '<div class="rec-layout">' +
+      '<div class="q-rail" id="q-rail">' + qItems + '</div>' +
+      '<div>' +
+        '<div class="transcript-panel" id="transcript-panel"><p class="hint">Listening… speak naturally, questions are detected automatically as you read them.</p></div>' +
+        '<div class="rec-footer"><span class="hint">The app matches what’s said against your question bank — double-check on the next screen before submitting.</span>' +
+        '<button class="btn btn-sm" id="switch-to-paste">Not working? Switch to paste transcript</button></div>' +
+      '</div>' +
+    '</div>';
+  }
+
+  function cancelRecordingToSetup(){
+    showConfirm('Leave this interview? The in-progress recording will be discarded and not saved.', 'Leave', function(){
+      if (recSession){ recSession.shouldRestart = false; if (recSession.recognition){ try { recSession.recognition.stop(); } catch(e){} } stopTimer(); }
+      recSession = null;
+      forcePasteMode = false;
+      niStep = 'setup';
+      renderView();
+    });
+  }
+
+  function wireRecording(){
+    var srSupported = !!(window.SpeechRecognition || window.webkitSpeechRecognition);
+    var backBtn = document.getElementById('back-to-setup');
+    if (backBtn) backBtn.addEventListener('click', cancelRecordingToSetup);
+    if (!srSupported || forcePasteMode){
+      document.getElementById('fallback-finish').addEventListener('click', function(){
+        var text = document.getElementById('fallback-transcript').value.trim();
+        var utterances = (text.match(/[^.!?\n]+[.!?]*/g) || []).map(function(s){ return s.trim(); }).filter(Boolean);
+        finishSession(utterances, text);
+      });
+      return;
+    }
+    document.getElementById('stop-btn').addEventListener('click', stopRecording);
+    var switchBtn = document.getElementById('switch-to-paste');
+    if (switchBtn) switchBtn.addEventListener('click', function(){
+      if (recSession){ recSession.shouldRestart = false; if (recSession.recognition){ try { recSession.recognition.stop(); } catch(e){} } stopTimer(); }
+      forcePasteMode = true;
+      renderView();
+    });
+  }
+
+  function startTimer(){
+    stopTimer();
+    recSession.timerHandle = setInterval(function(){
+      var el = document.getElementById('rec-timer');
+      if (el) el.textContent = fmtDuration((Date.now() - recSession.startedAt) / 1000);
+    }, 500);
+  }
+  function stopTimer(){ if (recSession && recSession.timerHandle) clearInterval(recSession.timerHandle); }
+
+  var MIC_ERROR_MESSAGES = {
+    'not-allowed': 'Microphone blocked — allow mic access for this page (check the address-bar icon) and press Stop, then start a new interview.',
+    'service-not-allowed': 'Microphone blocked by the browser/OS — allow mic access and try again.',
+    'audio-capture': 'No microphone found — check a mic is connected and try again.',
+    'network': 'Lost connection to the speech service — will keep retrying.',
+    'no-speech': null, // routine — happens during normal silence, not an error worth surfacing
+    'aborted': null
+  };
+
+  function setMicStatus(text, cls){
+    var el = document.getElementById('mic-status');
+    if (!el) return;
+    el.textContent = text;
+    el.className = 'hint' + (cls ? ' ' + cls : '');
+  }
+
+  function startRecording(){
+    recSession = { startedAt: Date.now(), utterances: [], recognition: null, shouldRestart: false, timerHandle: null };
+    startTimer();
+
+    var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) return;
+
+    // Request the microphone directly first. This exists purely for diagnosis:
+    // getUserMedia gives a specific, standard error name/message, where
+    // SpeechRecognition's own permission handling can fail silently. If this
+    // never even shows a system permission prompt, that points to something
+    // blocking mic access before the browser asks — not a setting to fix here.
+    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia){
+      setMicStatus('requesting microphone access…');
+      navigator.mediaDevices.getUserMedia({ audio: true }).then(function(stream){
+        stream.getTracks().forEach(function(t){ t.stop(); }); // only needed the permission check
+        beginSpeechRecognition(SR);
+      }).catch(function(err){
+        var name = (err && err.name) || 'Error';
+        var detail =
+          name === 'NotAllowedError' ? 'blocked — this browser view isn’t allowed to use the microphone here' :
+          name === 'NotFoundError' ? 'no microphone found on this device' :
+          name === 'NotReadableError' ? 'microphone is in use by another app' :
+          (err && err.message) || name;
+        setMicStatus('microphone unavailable: ' + detail + ' (' + name + ')', 'mic-error');
+        toast('Microphone unavailable (' + name + '). Try “Switch to paste transcript” below, or open this app in its own browser tab if you haven’t already.', 'error');
+      });
+    } else {
+      beginSpeechRecognition(SR);
+    }
+  }
+
+  function beginSpeechRecognition(SR){
+    if (!recSession) return;
+    var rec = new SR();
+    rec.continuous = true;
+    rec.interimResults = true;
+    rec.lang = 'en-US';
+
+    rec.onstart = function(){ setMicStatus('listening…'); };
+    rec.onspeechstart = function(){ setMicStatus('hearing you…', 'mic-active'); };
+    rec.onspeechend = function(){ setMicStatus('listening…'); };
+    rec.onresult = function(e){
+      var interim = '';
+      for (var i = e.resultIndex; i < e.results.length; i++){
+        var res = e.results[i];
+        var text = (res[0].transcript || '').trim();
+        if (res.isFinal){ if (text) onFinalUtterance(text); }
+        else interim += text + ' ';
+      }
+      renderTranscript(interim);
+    };
+    rec.onerror = function(e){
+      var known = MIC_ERROR_MESSAGES.hasOwnProperty(e.error) ? MIC_ERROR_MESSAGES[e.error] : ('microphone error (' + e.error + ')');
+      if (known) setMicStatus(known, 'mic-error');
+      if (e.error === 'not-allowed' || e.error === 'service-not-allowed' || e.error === 'audio-capture'){
+        toast('Microphone problem: ' + (known || e.error) + '. You can switch to paste-transcript mode below.', 'error');
+        recSession.shouldRestart = false;
+      }
+    };
+    rec.onend = function(){
+      if (recSession && recSession.shouldRestart){
+        try { rec.start(); } catch(e){ setMicStatus('microphone stopped unexpectedly — try “Switch to paste transcript.”', 'mic-error'); }
+      }
+    };
+    recSession.recognition = rec;
+    recSession.shouldRestart = true;
+    try { rec.start(); } catch (e) {
+      setMicStatus('couldn’t start the microphone — try “Switch to paste transcript” below.', 'mic-error');
+      toast('Couldn’t start the microphone.', 'error');
+    }
+  }
+
+  function onFinalUtterance(text){
+    recSession.utterances.push(text);
+    var draft = runMatching(recSession.utterances, state.questions);
+    recSession.draft = draft;
+    updateQRail(draft);
+    renderTranscript('');
+  }
+
+  function updateQRail(draft){
+    var rail = document.getElementById('q-rail');
+    if (!rail) return;
+    var byId = {};
+    draft.qa.forEach(function(q){ byId[q.questionId] = q; });
+    Array.prototype.forEach.call(rail.querySelectorAll('.q-rail-item'), function(item){
+      var q = byId[item.dataset.qid];
+      var dot = item.querySelector('.q-dot');
+      item.classList.remove('current', 'done');
+      if (dot) dot.textContent = '';
+      if (!q || !q.asked) return;
+      if (q.questionId === draft.currentQuestionId){
+        item.classList.add('current');
+      } else {
+        item.classList.add('done');
+        if (dot) dot.textContent = '✓';
+      }
+    });
+  }
+
+  function renderTranscript(interim){
+    var panel = document.getElementById('transcript-panel');
+    if (!panel || !recSession) return;
+    var lines = recSession.utterances.map(function(u){ return '<div class="transcript-line">' + escapeHtml(u) + '</div>'; }).join('');
+    panel.innerHTML = (lines || '<p class="hint">Listening… speak naturally, questions are detected automatically as you read them.</p>') +
+      (interim ? '<div class="transcript-line transcript-interim">' + escapeHtml(interim) + '</div>' : '');
+    panel.scrollTop = panel.scrollHeight;
+  }
+
+  function stopRecording(){
+    if (!recSession) return;
+    recSession.shouldRestart = false;
+    if (recSession.recognition){ try { recSession.recognition.stop(); } catch(e){} }
+    stopTimer();
+    recSession.endedAt = Date.now();
+    var draft = runMatching(recSession.utterances, state.questions);
+    finishSession(recSession.utterances, null, draft);
+  }
+
+  function finishSession(utterances, rawPastedText, precomputedDraft){
+    var draft = precomputedDraft || runMatching(utterances, state.questions);
+    var qa = draft.qa.map(function(q){
+      return { questionId: q.questionId, questionText: q.questionText, asked: q.asked, answerText: q.answerText, summary: summarize(q.answerText, 2) };
+    });
+    reviewDraft = {
+      candidateName: setupPick.candidateName,
+      submittedBy: setupPick.submittedBy,
+      opening: draft.opening,
+      qa: qa,
+      overallSummary: buildOverallSummary(setupPick.candidateName, qa, draft.opening),
+      rawTranscript: rawPastedText || utterances.join('\n'),
+      startedAt: recSession ? recSession.startedAt : Date.now(),
+      endedAt: recSession ? (recSession.endedAt || Date.now()) : Date.now()
+    };
+    niStep = 'review';
+    renderView();
+  }
+
+  /* ---------- Review ---------- */
+  function renderReviewHtml(){
+    var d = reviewDraft;
+    if (!d) return '<p class="hint">Nothing to review yet.</p>';
+    var qaCards = d.qa.map(function(qa, i){
+      return '<div class="qa-card">' +
+        '<div class="q-text">' + escapeHtml(qa.questionText) + (qa.asked ? '' : '<span class="not-asked-flag">not confidently detected — check transcript</span>') + '</div>' +
+        '<textarea data-i="' + i + '" data-field="answerText">' + escapeHtml(qa.answerText) + '</textarea>' +
+        '<div class="summary-label">Auto-summary (editable)</div>' +
+        '<textarea class="summary" data-i="' + i + '" data-field="summary">' + escapeHtml(qa.summary) + '</textarea>' +
+      '</div>';
+    }).join('');
+
+    return '' +
+    '<button class="btn btn-sm" id="back-to-recording" style="margin-bottom:14px;">← Back</button>' +
+    '<div class="view-head"><div><h2>Review before submitting</h2><p class="sub">Fix anything the auto-detection missed, then submit — this becomes part of the shared record.</p></div></div>' +
+    '<div class="card card-pad" style="margin-bottom:18px;">' +
+      '<div class="field-group"><label>Candidate</label><input id="rv-candidate" value="' + escapeHtml(d.candidateName) + '"></div>' +
+      '<div class="field-group" style="margin-bottom:0;"><label>Submitted by</label><input id="rv-submitted-by" value="' + escapeHtml(d.submittedBy) + '"></div>' +
+    '</div>' +
+    (d.opening && d.opening.trim() ? '<div class="qa-card"><div class="q-text">Opening remarks / other speech</div><textarea id="rv-opening">' + escapeHtml(d.opening) + '</textarea></div>' : '') +
+    qaCards +
+    '<div class="card card-pad" style="margin-bottom:18px;">' +
+      '<div class="field-group" style="margin-bottom:0;"><label>Overall summary (editable)</label><textarea id="rv-overall" style="min-height:90px;">' + escapeHtml(d.overallSummary) + '</textarea></div>' +
+    '</div>' +
+    '<div class="rec-footer">' +
+      '<div style="display:flex;gap:8px;">' +
+        '<button class="btn btn-danger" id="rv-discard">Discard</button>' +
+      '</div>' +
+      '<button class="btn btn-primary" id="rv-submit">Submit interview</button>' +
+    '</div>';
+  }
+
+  function wireReview(){
+    var root = document.getElementById('view-root');
+    root.addEventListener('input', function(e){
+      var t = e.target;
+      if (t.id === 'rv-candidate') reviewDraft.candidateName = t.value;
+      else if (t.id === 'rv-submitted-by') reviewDraft.submittedBy = t.value;
+      else if (t.id === 'rv-opening') reviewDraft.opening = t.value;
+      else if (t.id === 'rv-overall') reviewDraft.overallSummary = t.value;
+      else if (t.dataset && t.dataset.field && t.dataset.i !== undefined){
+        reviewDraft.qa[parseInt(t.dataset.i,10)][t.dataset.field] = t.value;
+      }
+    });
+    function goBackDiscard(message, confirmLabel){
+      showConfirm(message, confirmLabel, function(){
+        recSession = null; reviewDraft = null; niStep = 'setup'; forcePasteMode = false;
+        renderView();
+      });
+    }
+    var backBtn = document.getElementById('back-to-recording');
+    if (backBtn) backBtn.addEventListener('click', function(){
+      goBackDiscard('Go back? This interview hasn’t been submitted yet — going back will discard it. (The recording itself has already stopped, so you\'ll need to start a fresh interview.)', 'Go back');
+    });
+    var discardBtn = document.getElementById('rv-discard');
+    if (discardBtn) discardBtn.addEventListener('click', function(){
+      goBackDiscard('Discard this interview? Nothing will be saved.', 'Discard');
+    });
+    var submitBtn = document.getElementById('rv-submit');
+    if (submitBtn) submitBtn.addEventListener('click', function(){
+      if (!reviewDraft.candidateName.trim()){ toast('Candidate name can’t be empty.', 'warn'); return; }
+      if (!reviewDraft.submittedBy.trim()){ toast('Enter who’s submitting this interview.', 'warn'); return; }
+      var interview = {
+        id: uid('int'),
+        candidateName: reviewDraft.candidateName.trim(),
+        submittedBy: reviewDraft.submittedBy.trim(),
+        startedAt: reviewDraft.startedAt,
+        endedAt: reviewDraft.endedAt,
+        durationSec: Math.round(((reviewDraft.endedAt||Date.now()) - (reviewDraft.startedAt||Date.now()))/1000),
+        openingRemarks: reviewDraft.opening || '',
+        qa: reviewDraft.qa,
+        overallSummary: reviewDraft.overallSummary || '',
+        rawTranscript: reviewDraft.rawTranscript || '',
+        submittedAt: Date.now()
+      };
+      var ns = deepClone(state);
+      ns.interviews.push(interview);
+      submitBtn.disabled = true;
+      publishState(ns, 'Interview for ' + interview.candidateName + ' submitted').then(function(){
+        recSession = null; reviewDraft = null; niStep = 'setup';
+        setupPick = { candidateName:'', submittedBy: interview.submittedBy, useCustomName:false };
+        currentView = 'dashboard';
+        renderView();
+      });
+    });
+  }
+
+  /* ============================================================
+     Boot
+     ============================================================ */
+  initShell();
+})();
+
+</script>
+</body>
+</html>
