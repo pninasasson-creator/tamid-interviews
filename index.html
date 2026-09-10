@@ -360,6 +360,20 @@
   'a an the is are was were be been being to of and or but in on at for with about as by that this it you your youre we our i im do does did can could would will shall should have has had not so if what which who whom how when where why lets let just really very kind sort okay ok yeah um uh like right now then there here also going go got get their they them he she his her'
     .split(' ').forEach(function(w){ STOPWORDS[w] = true; });
 
+  // Chrome's speech engine doesn't know club-specific proper nouns like
+  // "TAMID" and tends to substitute a similar-sounding real word instead.
+  // This runs a small find/replace over every LIVE-RECOGNIZED utterance
+  // (not pasted transcripts) before it's shown or matched. If it keeps
+  // mishearing it a different way, add the exact wrong word/phrase here.
+  var WORD_CORRECTIONS = [
+    { pattern: /\b(timid|tamid|ta ?mid|tuh ?mid|ta ?meed|tuh ?meed|ta ?mead|tuh ?mead|ta ?need|tommy ?d|tam+id|tam+eed|tammy'?d)\b/gi, replacement: 'TAMID' }
+  ];
+  function applyWordCorrections(text){
+    var out = text;
+    WORD_CORRECTIONS.forEach(function(c){ out = out.replace(c.pattern, c.replacement); });
+    return out;
+  }
+
   function normalize(str){
     return (str || '').toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
   }
@@ -408,16 +422,45 @@
       opening: opening.join(' '),
       currentQuestionId: current >= 0 ? qState[current].q.id : null,
       qa: qState.map(function(qs){
-        return { questionId: qs.q.id, questionText: qs.q.text, asked: qs.asked, answerText: qs.buffer.join(' ') };
+        return { questionId: qs.q.id, questionText: qs.q.text, optional: !!qs.q.optional, asked: qs.asked, answerText: qs.buffer.join(' ') };
       })
     };
+  }
+
+  // There's no speaker separation available (one mic, no paid diarization
+  // service) — so a line the interviewer says while the candidate is
+  // answering (a follow-up question, "mhm," "great, thanks") ends up in the
+  // same transcript block as the candidate's actual answer. This is a
+  // best-effort filter to keep obviously-interviewer lines out of the
+  // auto-summary specifically — it can't be perfect without real speaker
+  // ID, and the full unfiltered answer is still shown (and editable) on
+  // the review screen. If a summary still picks up interviewer chatter,
+  // tell me the exact line and it can be added to this list.
+  var INTERVIEWER_FILLERS = {
+    'okay':1,'ok':1,'great':1,'got it':1,'thank you':1,'thanks':1,'interesting':1,'nice':1,'cool':1,
+    'awesome':1,'sounds good':1,'makes sense':1,'perfect':1,'alright':1,'yeah':1,'yep':1,'mhm':1,
+    'mm hmm':1,'right':1,'good':1,'wonderful':1,'love that':1,'love it':1,'no worries':1,'of course':1,
+    'sure':1,'absolutely':1,'gotcha':1,'i see':1,'got you':1
+  };
+  var INTERVIEWER_LEAD_INS = /^(so|now|alright|ok|okay|great|next question|let'?s move on|moving on|moving forward|can you|could you|tell us more|tell me more|elaborate on that|can you elaborate|why is that|what do you mean|follow up|follow-up question)\b/i;
+  function looksLikeInterviewerLine(sentence){
+    var s = (sentence || '').trim();
+    if (!s) return true;
+    if (/\?\s*$/.test(s)) return true; // a question — the interviewer asking, not the candidate answering
+    var wordCount = s.split(/\s+/).filter(Boolean).length;
+    var bare = s.toLowerCase().replace(/[^a-z\s]/g, '').trim();
+    if (wordCount <= 4 && INTERVIEWER_FILLERS.hasOwnProperty(bare)) return true;
+    if (wordCount <= 8 && INTERVIEWER_LEAD_INS.test(s)) return true;
+    return false;
   }
 
   function summarize(text, maxSentences){
     var sentences = (text.match(/[^.!?]+[.!?]*/g) || []).map(function(s){ return s.trim(); }).filter(Boolean);
     if (!sentences.length) return '';
-    var ranked = sentences.slice().sort(function(a,b){ return b.length - a.length; }).slice(0, maxSentences || 2);
-    return sentences.filter(function(s){ return ranked.indexOf(s) !== -1; }).join(' ');
+    var candidateSentences = sentences.filter(function(s){ return !looksLikeInterviewerLine(s); });
+    var pool = candidateSentences.length ? candidateSentences : sentences; // don't summarize into nothing if the filter caught everything
+    var ranked = pool.slice().sort(function(a,b){ return b.length - a.length; }).slice(0, maxSentences || 2);
+    return pool.filter(function(s){ return ranked.indexOf(s) !== -1; }).join(' ');
   }
 
   function buildOverallSummary(candidateName, qa, opening){
@@ -722,12 +765,15 @@
     if (!found){ toast('Couldn’t find a question column in that file.', 'error'); return; }
     var header = found.rows[found.hi];
     var iText = colIndex(header, ['question text','question']);
+    var iOptional = colIndex(header, ['optional']);
     var out = [];
     for (var r=found.hi+1; r<found.rows.length; r++){
       var row = found.rows[r];
       var text = iText!==-1 ? String(row[iText]||'').trim() : '';
       if (!text) continue;
-      out.push({ id: uid('q'), number: out.length+1, text: text });
+      var optVal = iOptional!==-1 ? String(row[iOptional]||'').trim().toLowerCase() : '';
+      var optional = optVal === 'yes' || optVal === 'y' || optVal === 'true' || optVal === '1' || optVal === 'optional';
+      out.push({ id: uid('q'), number: out.length+1, text: text, optional: optional });
     }
     if (!out.length){ toast('No question rows found under that header.', 'error'); return; }
     draftQuestions = out;
@@ -867,11 +913,14 @@
 
     var rows = interviews.map(function(iv){
       var answered = iv.qa.filter(function(q){ return q.asked; }).length;
+      var requiredTotal = iv.qa.filter(function(q){ return !q.optional; }).length;
+      var requiredAnswered = iv.qa.filter(function(q){ return q.asked && !q.optional; }).length;
+      var fullyCovered = requiredTotal > 0 && requiredAnswered === requiredTotal;
       return '<tr>' +
         '<td><strong>' + escapeHtml(iv.candidateName) + '</strong></td>' +
         '<td>' + escapeHtml(iv.submittedBy || '—') + '</td>' +
         '<td class="mono">' + fmtDate(iv.submittedAt) + '</td>' +
-        '<td><span class="pill ' + (answered === state.questions.length && state.questions.length ? 'pill-success' : 'pill-muted') + '">' + answered + ' / ' + state.questions.length + '</span></td>' +
+        '<td><span class="pill ' + (fullyCovered ? 'pill-success' : 'pill-muted') + '">' + answered + ' / ' + state.questions.length + '</span></td>' +
         '<td class="mono">' + fmtDuration(iv.durationSec) + '</td>' +
         '<td>' +
           '<div style="display:flex;gap:6px;flex-wrap:wrap;">' +
@@ -985,6 +1034,7 @@
       return '<tr>' +
         '<td class="mono" style="width:36px;">' + (i+1) + '</td>' +
         '<td><textarea data-field="text" data-i="' + i + '" rows="1" style="min-height:38px;">' + escapeHtml(q.text) + '</textarea></td>' +
+        '<td style="text-align:center;"><input type="checkbox" data-field="optional" data-i="' + i + '" data-action="toggle-optional" ' + (q.optional ? 'checked' : '') + ' title="Optional — OK if this one isn’t asked"></td>' +
         '<td><div style="display:flex;gap:4px;">' +
           '<button class="btn btn-sm" data-action="q-up" data-i="' + i + '" ' + (i===0?'disabled':'') + ' title="Move up">↑</button>' +
           '<button class="btn btn-sm" data-action="q-down" data-i="' + i + '" ' + (i===draftQuestions.length-1?'disabled':'') + ' title="Move down">↓</button>' +
@@ -1032,8 +1082,8 @@
             '<button class="btn btn-sm btn-primary" data-action="save-questions">Save changes</button>' +
           '</div>' +
         '</div>' +
-        '<div class="table-wrap"><table><thead><tr><th>#</th><th>Question text</th><th></th></tr></thead><tbody>' +
-          (qRows || '<tr class="empty-row"><td colspan="3">No questions yet — upload your list or add one manually.</td></tr>') +
+        '<div class="table-wrap"><table><thead><tr><th>#</th><th>Question text</th><th>Optional</th><th></th></tr></thead><tbody>' +
+          (qRows || '<tr class="empty-row"><td colspan="4">No questions yet — upload your list or add one manually.</td></tr>') +
         '</tbody></table></div>' +
       '</div>' +
     '</div>';
@@ -1044,6 +1094,7 @@
 
     root.addEventListener('input', function(e){
       var t = e.target;
+      if (t.type === 'checkbox') return; // handled by the 'change' listener below
       if (t.dataset && t.dataset.field !== undefined && t.dataset.i !== undefined){
         var i = parseInt(t.dataset.i, 10);
         if (root.contains(document.getElementById('tab-candidates')) && draftCandidates[i] && (t.dataset.field in draftCandidates[i])){
@@ -1052,6 +1103,13 @@
           draftQuestions[i][t.dataset.field] = t.value;
         }
       }
+    });
+
+    root.addEventListener('change', function(e){
+      var t = e.target;
+      if (t.type !== 'checkbox' || t.dataset.action !== 'toggle-optional') return;
+      var i = parseInt(t.dataset.i, 10);
+      if (draftQuestions[i]) draftQuestions[i].optional = t.checked;
     });
 
     root.addEventListener('click', function(e){
@@ -1071,7 +1129,7 @@
       }
       else if (action === 'del-candidate'){ draftCandidates.splice(i,1); renderView(); }
       else if (action === 'add-question'){
-        draftQuestions.push({ id: uid('q'), number: draftQuestions.length+1, text:'' });
+        draftQuestions.push({ id: uid('q'), number: draftQuestions.length+1, text:'', optional: false });
         renderView();
       }
       else if (action === 'del-question'){ draftQuestions.splice(i,1); renderView(); }
@@ -1120,7 +1178,7 @@
       return '<option value="' + escapeHtml(c.name) + '">' + escapeHtml(c.name) + (c.timeSlot ? ' — ' + escapeHtml(c.timeSlot) : '') + '</option>';
     }).join('');
     var qList = state.questions.map(function(q,i){
-      return '<li><span class="qnum">' + (i+1) + '</span><span>' + escapeHtml(q.text) + '</span></li>';
+      return '<li><span class="qnum">' + (i+1) + '</span><span>' + escapeHtml(q.text) + (q.optional ? ' <span class="pill pill-muted">Optional</span>' : '') + '</span></li>';
     }).join('');
     var srSupported = !!(window.SpeechRecognition || window.webkitSpeechRecognition);
 
@@ -1202,7 +1260,7 @@
   function renderRecordingHtml(){
     var srSupported = !!(window.SpeechRecognition || window.webkitSpeechRecognition);
     var qItems = state.questions.map(function(q, i){
-      return '<div class="q-rail-item" data-qid="' + q.id + '"><span class="q-dot"></span><span>' + escapeHtml(q.text) + '</span></div>';
+      return '<div class="q-rail-item" data-qid="' + q.id + '"><span class="q-dot"></span><span>' + escapeHtml(q.text) + (q.optional ? ' <span class="pill pill-muted" style="font-size:10.5px;">Optional</span>' : '') + '</span></div>';
     }).join('');
 
     if (!srSupported || forcePasteMode){
@@ -1336,7 +1394,7 @@
       var interim = '';
       for (var i = e.resultIndex; i < e.results.length; i++){
         var res = e.results[i];
-        var text = (res[0].transcript || '').trim();
+        var text = applyWordCorrections((res[0].transcript || '').trim());
         if (res.isFinal){ if (text) onFinalUtterance(text); }
         else interim += text + ' ';
       }
@@ -1413,7 +1471,7 @@
   function finishSession(utterances, rawPastedText, precomputedDraft){
     var draft = precomputedDraft || runMatching(utterances, state.questions);
     var qa = draft.qa.map(function(q){
-      return { questionId: q.questionId, questionText: q.questionText, asked: q.asked, answerText: q.answerText, summary: summarize(q.answerText, 2) };
+      return { questionId: q.questionId, questionText: q.questionText, optional: !!q.optional, asked: q.asked, answerText: q.answerText, summary: summarize(q.answerText, 2) };
     });
     reviewDraft = {
       candidateName: setupPick.candidateName,
@@ -1434,8 +1492,11 @@
     var d = reviewDraft;
     if (!d) return '<p class="hint">Nothing to review yet.</p>';
     var qaCards = d.qa.map(function(qa, i){
+      var flag = qa.asked ? '' :
+        (qa.optional ? '<span class="not-asked-flag" style="color:var(--text-muted);">optional — OK if skipped</span>'
+                      : '<span class="not-asked-flag">not confidently detected — check transcript</span>');
       return '<div class="qa-card">' +
-        '<div class="q-text">' + escapeHtml(qa.questionText) + (qa.asked ? '' : '<span class="not-asked-flag">not confidently detected — check transcript</span>') + '</div>' +
+        '<div class="q-text">' + escapeHtml(qa.questionText) + (qa.optional ? ' <span class="pill pill-muted">Optional</span>' : '') + flag + '</div>' +
         '<textarea data-i="' + i + '" data-field="answerText">' + escapeHtml(qa.answerText) + '</textarea>' +
         '<div class="summary-label">Auto-summary (editable)</div>' +
         '<textarea class="summary" data-i="' + i + '" data-field="summary">' + escapeHtml(qa.summary) + '</textarea>' +
