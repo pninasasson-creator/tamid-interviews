@@ -283,6 +283,7 @@
   .qa-card .summary-label{ font-size:11.5px; text-transform:uppercase; letter-spacing:.04em; color:var(--text-muted); margin:10px 0 4px; font-weight:600; }
   .qa-card textarea.summary{ min-height:44px; font-size:13px; line-height:1.5; resize:none; overflow:hidden; }
   #rv-overall{ resize:none; overflow:hidden; line-height:1.5; }
+  textarea.ei-auto{ resize:none; overflow:hidden; line-height:1.5; }
   .rubric-list{ display:flex; flex-direction:column; gap:12px; margin-bottom:18px; }
   .rubric-row{ background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:16px 18px; transition:border-color .15s; }
   .rubric-row.done{ border-color:color-mix(in srgb, var(--success) 45%, var(--border)); }
@@ -419,7 +420,7 @@
     var f = [];
     if (!rt) return f;
     if (rt.askedQuestions === 'no') f.push('Didn’t ask us any questions');
-    if (rt.redFlags && rt.redFlags.trim()) f.push('Red flags noted');
+    if (rt.redFlags && rt.redFlags.trim() && !/^(none|n\/?a|no|nope|nothing|-+)\.?$/i.test(rt.redFlags.trim())) f.push('Red flags noted');
     return f;
   }
 
@@ -1073,7 +1074,7 @@
       .then(function(data){
         if (data && Array.isArray(data.candidates)) state.candidates = data.candidates;
         if (data && Array.isArray(data.questions)) state.questions = data.questions;
-        if (data && Array.isArray(data.interviews)) state.interviews = data.interviews;
+        if (data && Array.isArray(data.interviews)) state.interviews = dedupeInterviews(data.interviews);
         saveLocal(state);
         setSyncIndicator(false);
         return true;
@@ -1104,7 +1105,21 @@
   // wait on the network), then tries to push the relevant piece to the
   // Sheet in the background. `kind` picks what gets sent: 'interview'
   // (default — the just-submitted interview), 'candidates', or 'questions'.
-  function publishState(newState, successMsg, kind){
+  // An edited rating re-sends the interview with the same id. If the Sheet
+  // stores that as a new row instead of updating the old one, keep only the
+  // most recently updated copy of each interview.
+  function dedupeInterviews(list){
+    var byId = {}, order = [];
+    list.forEach(function(iv, i){
+      if (!iv || !iv.id){ order.push({ iv: iv }); return; }
+      var cur = byId[iv.id];
+      if (!cur){ byId[iv.id] = { iv: iv, i: order.length }; order.push(byId[iv.id]); return; }
+      var newer = (iv.updatedAt || iv.submittedAt || 0) >= (cur.iv.updatedAt || cur.iv.submittedAt || 0);
+      if (newer) cur.iv = iv;
+    });
+    return order.map(function(o){ return o.iv; });
+  }
+  function publishState(newState, successMsg, kind, interviewToPush){
     state = newState;
     saveLocal(state);
     renderView();
@@ -1115,7 +1130,7 @@
     setSyncIndicator(true, 'saving…');
     var payload = kind === 'candidates' ? { candidates: newState.candidates }
                 : kind === 'questions' ? { questions: newState.questions }
-                : { interview: newState.interviews[newState.interviews.length - 1] };
+                : { interview: interviewToPush || newState.interviews[newState.interviews.length - 1] };
     return pushToSheets(kind || 'interview', payload).then(function(result){
       setSyncIndicator(false);
       if (result && result.ok){
@@ -1227,11 +1242,12 @@
     if (!rt) return '';
     var flags = ratingFlags(rt);
     return '<h4>Evaluation — ' + rt.total + ' / ' + (rt.max || RUBRIC_MAX) + '</h4>' +
+      (rt.editedBy ? '<p class="hint" style="margin:-4px 0 8px;">Last edited by ' + escapeHtml(rt.editedBy) + ' · ' + fmtDate(rt.editedAt) + '</p>' : '') +
       '<table style="margin-bottom:10px;"><tbody>' + RUBRIC.map(function(r){
         var x = rt.scores[r.key] || {};
         return '<tr><td style="width:45%;">' + escapeHtml(r.name) + '</td><td class="mono" style="width:60px;"><strong>' + (x.score || '—') + '</strong>/10</td><td style="white-space:pre-wrap;">' + escapeHtml(x.notes || '') + '</td></tr>';
       }).join('') + '</tbody></table>' +
-      '<p style="margin-bottom:6px;"><strong>Asked us questions:</strong> ' + (rt.askedQuestions === 'yes' ? 'Yes' : '<span style="color:var(--live);font-weight:600;">No — red flag</span>') +
+      '<p style="margin-bottom:6px;"><strong>Asked us questions:</strong> ' + (rt.askedQuestions === 'yes' ? 'Yes' : '<span style="color:var(--live);font-weight:600;">No</span>') +
       ' &nbsp;·&nbsp; <strong>Fund or Consulting:</strong> ' + escapeHtml(rt.track || '—') + '</p>' +
       (rt.redFlags ? '<p style="margin-bottom:18px;white-space:pre-wrap;"><strong style="color:var(--live);">Red flags / concerns:</strong> ' + escapeHtml(rt.redFlags) + '</p>' : '<div style="margin-bottom:18px;"></div>') +
       '';
@@ -1240,7 +1256,7 @@
     if (!rt) return [];
     var lines = ['', 'EVALUATION — ' + rt.total + ' / ' + (rt.max || RUBRIC_MAX)];
     RUBRIC.forEach(function(r){ var x = rt.scores[r.key] || {}; lines.push(r.name + ': ' + (x.score || '—') + '/10' + (x.notes ? ' — ' + x.notes : '')); });
-    lines.push('Asked us questions: ' + (rt.askedQuestions === 'yes' ? 'Yes' : 'No (red flag)'));
+    lines.push('Asked us questions: ' + (rt.askedQuestions === 'yes' ? 'Yes' : 'No'));
     lines.push('Fund or Consulting: ' + (rt.track || '—'));
     if (rt.redFlags) lines.push('Red flags / concerns: ' + rt.redFlags);
     return lines;
@@ -1460,7 +1476,7 @@
   /* ============================================================
      View dispatch
      ============================================================ */
-  var TITLES = { dashboard: 'Dashboard', 'new-interview': 'New Interview', manage: 'Candidates & Questions' };
+  var TITLES = { dashboard: 'Dashboard', 'new-interview': 'New Interview', manage: 'Candidates & Questions', 'edit-interview': 'Edit Interview' };
 
   function updateNavActive(){
     Array.prototype.forEach.call(document.querySelectorAll('.nav-btn[data-nav]'), function(btn){
@@ -1487,6 +1503,7 @@
     if (currentView === 'dashboard'){ root.innerHTML = renderDashboardHtml(); wireDashboard(); }
     else if (currentView === 'manage'){ root.innerHTML = renderManageHtml(); wireManage(); }
     else if (currentView === 'new-interview'){ root.innerHTML = renderNewInterviewHtml(); wireNewInterview(); }
+    else if (currentView === 'edit-interview'){ root.innerHTML = renderEditInterviewHtml(); wireEditInterview(); }
   }
 
   /* ============================================================
@@ -1518,6 +1535,7 @@
         '<td>' +
           '<div style="display:flex;gap:6px;flex-wrap:wrap;">' +
           '<button class="btn btn-sm" data-action="view-doc" data-id="' + iv.id + '">View document</button>' +
+          '<button class="btn btn-sm" data-action="edit-interview" data-id="' + iv.id + '">' + (iv.rating ? 'Edit' : 'Edit / add rating') + '</button>' +
           '<button class="btn btn-sm" data-action="export-csv" data-id="' + iv.id + '">Export CSV</button>' +
           '</div>' +
         '</td>' +
@@ -1566,6 +1584,7 @@
       else if (action === 'sort-newest'){ dashSort = 'newest'; renderView(); }
       else if (action === 'sort-score'){ dashSort = 'score'; renderView(); }
       else if (action === 'export-scores') exportScoresCsv();
+      else if (action === 'edit-interview') openEditInterview(btn.dataset.id);
       else if (action === 'view-doc'){
         var iv = state.interviews.find(function(x){ return x.id === btn.dataset.id; });
         if (iv) openDocModal(iv);
@@ -1596,7 +1615,8 @@
       '<div class="card" style="max-width:680px;width:100%;max-height:85vh;overflow-y:auto;">' +
         '<div class="card-head"><h3>' + escapeHtml(iv.candidateName) + '</h3><button class="btn btn-sm" id="doc-close">Close</button></div>' +
         '<div class="card-pad doc-preview">' +
-          '<p class="hint" style="margin-bottom:16px;">Interviewed by ' + escapeHtml(iv.submittedBy||'—') + ' &middot; ' + fmtDate(iv.submittedAt) + ' &middot; ' + fmtDuration(iv.durationSec) + '</p>' +
+          '<p class="hint" style="margin-bottom:16px;">Interviewed by ' + escapeHtml(iv.submittedBy||'—') + ' &middot; ' + fmtDate(iv.submittedAt) + ' &middot; ' + fmtDuration(iv.durationSec) +
+            (iv.lastEditedBy ? ' &middot; last edited by ' + escapeHtml(iv.lastEditedBy) + ' ' + fmtDate(iv.lastEditedAt) : '') + '</p>' +
           '<h4>Summary</h4><p style="margin-bottom:18px;line-height:1.6;white-space:pre-wrap;">' + escapeHtml(iv.overallSummary || '—') + '</p>' +
           ratingHtml(iv.rating) +
           (iv.openingRemarks && iv.openingRemarks.trim() ? '<h4>Opening remarks / other</h4><p style="margin-bottom:18px;white-space:pre-wrap;">' + escapeHtml(iv.openingRemarks) + '</p>' : '') +
@@ -1604,6 +1624,7 @@
           '<div style="display:flex;gap:8px;margin-top:14px;">' +
             '<button class="btn btn-primary btn-sm" id="doc-export-html">Download as document (.html)</button>' +
             '<button class="btn btn-sm" id="doc-export-csv">Download as spreadsheet (.csv)</button>' +
+            '<button class="btn btn-sm" id="doc-edit-rating">Edit interview</button>' +
           '</div>' +
         '</div>' +
       '</div>';
@@ -1612,6 +1633,7 @@
     overlay.querySelector('#doc-close').addEventListener('click', function(){ overlay.remove(); });
     overlay.querySelector('#doc-export-html').addEventListener('click', function(){ exportInterviewDoc(iv); });
     overlay.querySelector('#doc-export-csv').addEventListener('click', function(){ exportInterviewCsv(iv); });
+    overlay.querySelector('#doc-edit-rating').addEventListener('click', function(){ overlay.remove(); openEditInterview(iv.id); });
   }
 
   /* ============================================================
@@ -2136,12 +2158,11 @@
 
 
   /* ---------- Rating (Interview Evaluation rubric) ---------- */
-  function renderRatingHtml(){
-    var d = reviewDraft;
-    if (!d) return '<p class="hint">Nothing to rate yet.</p>';
-    var rt = d.rating || (d.rating = blankRating());
+  // The rubric form itself — shared by "rate after the interview" and
+  // "edit a submitted rating".
+  function renderRubricBody(rt){
     var rows = RUBRIC.map(function(r){
-      var cur = rt.scores[r.key] || { score:null, notes:'' };
+      var cur = rt.scores[r.key] || (rt.scores[r.key] = { score:null, notes:'' });
       var btns = '';
       for (var n = 1; n <= 10; n++){
         var band = n <= 3 ? 'low' : n <= 7 ? 'mid' : 'high';
@@ -2155,31 +2176,23 @@
         '<textarea class="rubric-notes" data-notes="' + r.key + '" rows="1" placeholder="Notes (optional)">' + escapeHtml(cur.notes || '') + '</textarea>' +
       '</div>';
     }).join('');
-    var tot = ratingTotal(rt);
     var trackOpts = '<option value="">Choose…</option>' + TRACK_OPTIONS.map(function(t){ return '<option' + (rt.track === t ? ' selected' : '') + '>' + t + '</option>'; }).join('');
-    return '' +
-    '<button class="btn btn-sm" id="rt-back" style="margin-bottom:14px;">← Back to notes</button>' +
-    '<div class="view-head"><div><h2>Interview Evaluation <span class="pill pill-warning" style="vertical-align:middle;">Mandatory</span></h2>' +
-      '<p class="sub">Rate <strong>' + escapeHtml(d.candidateName) + '</strong> on each category — 1–3 weak, 4–7 solid, 8–10 exceptional. The guide under each row shows what each range looks like.</p></div></div>' +
-    '<div class="rubric-list">' + rows + '</div>' +
+    return '<div class="rubric-list">' + rows + '</div>' +
     '<div class="card card-pad rubric-extra">' +
       '<div class="field-group"><label>Did they have questions for us? <span style="color:var(--live);">*</span></label>' +
         '<div class="yn-row">' +
           '<button type="button" class="yn-btn' + (rt.askedQuestions === 'yes' ? ' on yes' : '') + '" data-yn="yes">Yes</button>' +
-          '<button type="button" class="yn-btn' + (rt.askedQuestions === 'no' ? ' on no' : '') + '" data-yn="no">No — red flag</button>' +
+          '<button type="button" class="yn-btn' + (rt.askedQuestions === 'no' ? ' on no' : '') + '" data-yn="no">No</button>' +
         '</div></div>' +
       '<div class="field-group"><label>Fund or Consulting?</label><select id="rt-track">' + trackOpts + '</select></div>' +
       '<div class="field-group" style="margin-bottom:0;"><label>Red flags / concerns</label><textarea id="rt-redflags" rows="2" placeholder="Dealbreakers or anything the board should know — late, rude, can’t commit to meetings…">' + escapeHtml(rt.redFlags || '') + '</textarea></div>' +
-    '</div>' +
-    '<div class="rubric-footer">' +
-      '<div><div class="rubric-total" id="rt-total">' + tot.total + ' <span>/ ' + RUBRIC_MAX + '</span></div><div class="hint" id="rt-progress">' + tot.scored + ' of ' + RUBRIC.length + ' categories scored</div></div>' +
-      '<button class="btn btn-primary" id="rt-submit">Submit interview &amp; rating</button>' +
     '</div>';
   }
-
-  function wireRating(){
-    var root = document.getElementById('view-root');
-    var rt = reviewDraft.rating;
+  function rubricTotalHtml(rt){
+    var tot = ratingTotal(rt);
+    return '<div><div class="rubric-total" id="rt-total">' + tot.total + ' <span>/ ' + RUBRIC_MAX + '</span></div><div class="hint" id="rt-progress">' + tot.scored + ' of ' + RUBRIC.length + ' categories scored</div></div>';
+  }
+  function wireRubricBody(root, rt){
     function refreshTotals(){
       var t = ratingTotal(rt);
       var el = document.getElementById('rt-total'); if (el) el.innerHTML = t.total + ' <span>/ ' + RUBRIC_MAX + '</span>';
@@ -2212,18 +2225,139 @@
       else if (t.id === 'rt-redflags'){ rt.redFlags = t.value; autosizeQ(t); }
     });
     root.addEventListener('change', function(e){ if (e.target.id === 'rt-track') rt.track = e.target.value; });
+  }
+  // Highlights anything missing; returns true when the rubric is complete.
+  function validateRubric(root, rt){
+    var missing = RUBRIC.filter(function(r){ return !rt.scores[r.key].score; });
+    missing.forEach(function(r){ root.querySelector('.rubric-row[data-row="' + r.key + '"]').classList.add('missing'); });
+    if (!rt.askedQuestions) root.querySelector('.yn-row').classList.add('missing');
+    if (missing.length){
+      toast('Score every category first — missing: ' + missing.map(function(r){ return r.name; }).join(', ') + '.', 'warn');
+      root.querySelector('.rubric-row.missing').scrollIntoView({ behavior:'smooth', block:'center' });
+      return false;
+    }
+    if (!rt.askedQuestions){ toast('Answer “Did they have questions for us?” first.', 'warn'); root.querySelector('.yn-row').scrollIntoView({ behavior:'smooth', block:'center' }); return false; }
+    return true;
+  }
+
+  function renderRatingHtml(){
+    var d = reviewDraft;
+    if (!d) return '<p class="hint">Nothing to rate yet.</p>';
+    var rt = d.rating || (d.rating = blankRating());
+    return '' +
+    '<button class="btn btn-sm" id="rt-back" style="margin-bottom:14px;">← Back to notes</button>' +
+    '<div class="view-head"><div><h2>Interview Evaluation <span class="pill pill-warning" style="vertical-align:middle;">Mandatory</span></h2>' +
+      '<p class="sub">Rate <strong>' + escapeHtml(d.candidateName) + '</strong> on each category — 1–3 weak, 4–7 solid, 8–10 exceptional. The guide under each row shows what each range looks like.</p></div></div>' +
+    renderRubricBody(rt) +
+    '<div class="rubric-footer">' + rubricTotalHtml(rt) +
+      '<button class="btn btn-primary" id="rt-submit">Submit interview &amp; rating</button>' +
+    '</div>';
+  }
+
+  function wireRating(){
+    var root = document.getElementById('view-root');
+    var rt = reviewDraft.rating;
+    wireRubricBody(root, rt);
     document.getElementById('rt-back').addEventListener('click', function(){ niStep = 'review'; renderView(); window.scrollTo(0, 0); });
     document.getElementById('rt-submit').addEventListener('click', function(){
-      var missing = RUBRIC.filter(function(r){ return !rt.scores[r.key].score; });
-      missing.forEach(function(r){ root.querySelector('.rubric-row[data-row="' + r.key + '"]').classList.add('missing'); });
-      if (!rt.askedQuestions) root.querySelector('.yn-row').classList.add('missing');
-      if (missing.length){
-        toast('Score every category first — missing: ' + missing.map(function(r){ return r.name; }).join(', ') + '.', 'warn');
-        root.querySelector('.rubric-row.missing').scrollIntoView({ behavior:'smooth', block:'center' });
-        return;
-      }
-      if (!rt.askedQuestions){ toast('Answer “Did they have questions for us?” first.', 'warn'); root.querySelector('.yn-row').scrollIntoView({ behavior:'smooth', block:'center' }); return; }
-      submitInterviewWithRating(this);
+      if (validateRubric(root, rt)) submitInterviewWithRating(this);
+    });
+  }
+
+  /* ---------- Edit a submitted interview (notes, summaries, rating) ---------- */
+  var editState = null; // { id, iv (working copy), editedBy, isNewRating }
+  function openEditInterview(id){
+    var src = state.interviews.find(function(x){ return x.id === id; });
+    if (!src) return;
+    var iv = deepClone(src);
+    var isNewRating = !iv.rating;
+    if (!iv.rating) iv.rating = blankRating();
+    RUBRIC.forEach(function(r){ if (!iv.rating.scores[r.key]) iv.rating.scores[r.key] = { score:null, notes:'' }; });
+    editState = { id: id, iv: iv, editedBy: setupPick.submittedBy || '', isNewRating: isNewRating };
+    currentView = 'edit-interview';
+    renderView();
+    window.scrollTo(0, 0);
+  }
+  function renderEditInterviewHtml(){
+    var e = editState;
+    if (!e || !state.interviews.some(function(x){ return x.id === e.id; })) return '<button class="btn btn-sm" id="ei-back" style="margin-bottom:14px;">← Back to dashboard</button><p class="hint">That interview couldn’t be found.</p>';
+    var iv = e.iv;
+    var history = 'Submitted by ' + escapeHtml(iv.submittedBy || '—') + ' · ' + fmtDate(iv.submittedAt) +
+      (iv.lastEditedBy ? ' &nbsp;·&nbsp; last edited by ' + escapeHtml(iv.lastEditedBy) + ' · ' + fmtDate(iv.lastEditedAt) : '');
+    var qaCards = iv.qa.map(function(qa, i){
+      if (!qa.asked && !String(qa.answerText || '').trim() && !String(qa.summary || '').trim()) return '';
+      return '<div class="qa-card">' +
+        '<div class="q-text">' + escapeHtml(qa.questionText) + (qa.asked ? '' : ' <span class="not-asked-flag">not confidently detected</span>') + '</div>' +
+        '<textarea class="ei-auto" data-ei="answerText" data-i="' + i + '">' + escapeHtml(qa.answerText || '') + '</textarea>' +
+        '<div class="summary-label">Summary</div>' +
+        '<textarea class="summary ei-auto" data-ei="summary" data-i="' + i + '">' + escapeHtml(qa.summary || '') + '</textarea>' +
+      '</div>';
+    }).join('');
+    var unasked = iv.qa.filter(function(qa){ return !qa.asked && !String(qa.answerText || '').trim() && !String(qa.summary || '').trim(); });
+    return '' +
+    '<button class="btn btn-sm" id="ei-back" style="margin-bottom:14px;">← Back to dashboard</button>' +
+    '<div class="view-head"><div><h2>Edit interview — ' + escapeHtml(iv.candidateName) + '</h2><p class="sub">' + history + '</p></div></div>' +
+    '<div class="card card-pad" style="margin-bottom:18px;">' +
+      '<div class="field-group"><label>Candidate</label><input id="ei-candidate" value="' + escapeHtml(iv.candidateName) + '"></div>' +
+      '<div class="field-group"><label>Submitted by</label><select id="ei-submitted-by">' + boardOptionsHtml(iv.submittedBy) + '</select></div>' +
+      '<div class="field-group" style="margin-bottom:0;"><label>Edited by <span style="color:var(--live);">*</span></label><select id="ei-edited-by">' + boardOptionsHtml(e.editedBy) + '</select></div>' +
+    '</div>' +
+    '<div class="card card-pad" style="margin-bottom:18px;"><div class="field-group" style="margin-bottom:0;"><label>Overall summary</label><textarea id="ei-overall" class="ei-auto">' + escapeHtml(iv.overallSummary || '') + '</textarea></div></div>' +
+    (String(iv.openingRemarks || '').trim() ? '<div class="qa-card"><div class="q-text">Opening remarks / other speech</div><textarea id="ei-opening" class="ei-auto">' + escapeHtml(iv.openingRemarks) + '</textarea></div>' : '') +
+    qaCards +
+    (unasked.length ? '<p class="hint" style="margin:-4px 0 18px;">' + unasked.length + ' question' + (unasked.length > 1 ? 's weren’t' : ' wasn’t') + ' asked in this interview, so ' + (unasked.length > 1 ? 'they’re' : 'it’s') + ' hidden.</p>' : '') +
+    '<div class="view-head" style="margin-top:26px;"><div><h2>Interview Evaluation</h2><p class="sub">' +
+      (e.isNewRating ? 'This interview hasn’t been rated yet.' : 'Rated by ' + escapeHtml(iv.rating.ratedBy || iv.submittedBy || '—') + ' · ' + fmtDate(iv.rating.ratedAt || iv.submittedAt)) + '</p></div></div>' +
+    renderRubricBody(iv.rating) +
+    '<div class="rubric-footer">' + rubricTotalHtml(iv.rating) +
+      '<div style="display:flex;gap:8px;"><button class="btn" id="ei-cancel">Cancel</button><button class="btn btn-primary" id="ei-save">Save changes</button></div>' +
+    '</div>';
+  }
+  function wireEditInterview(){
+    var root = document.getElementById('view-root');
+    var e = editState;
+    var back = function(){ editState = null; currentView = 'dashboard'; renderView(); };
+    document.getElementById('ei-back').addEventListener('click', back);
+    if (!document.getElementById('ei-save')) return;
+    var iv = e.iv;
+    wireRubricBody(root, iv.rating);
+    root.querySelectorAll('textarea.ei-auto').forEach(autosizeQ);
+    root.addEventListener('input', function(ev){
+      var t = ev.target;
+      if (t.id === 'ei-candidate') iv.candidateName = t.value;
+      else if (t.id === 'ei-overall'){ iv.overallSummary = t.value; autosizeQ(t); }
+      else if (t.id === 'ei-opening'){ iv.openingRemarks = t.value; autosizeQ(t); }
+      else if (t.dataset && t.dataset.ei){ iv.qa[parseInt(t.dataset.i, 10)][t.dataset.ei] = t.value; autosizeQ(t); }
+    });
+    root.addEventListener('change', function(ev){
+      if (ev.target.id === 'ei-submitted-by') iv.submittedBy = ev.target.value;
+      else if (ev.target.id === 'ei-edited-by') e.editedBy = ev.target.value;
+    });
+    document.getElementById('ei-cancel').addEventListener('click', back);
+    document.getElementById('ei-save').addEventListener('click', function(){
+      if (!iv.candidateName.trim()){ toast('Candidate name can’t be empty.', 'warn'); document.getElementById('ei-candidate').focus(); return; }
+      if (!e.editedBy){ toast('Choose your name under “Edited by” first.', 'warn'); document.getElementById('ei-edited-by').scrollIntoView({ behavior:'smooth', block:'center' }); return; }
+      if (!validateRubric(root, iv.rating)) return;
+      var ns = deepClone(state);
+      var idx = ns.interviews.findIndex(function(x){ return x.id === e.id; });
+      if (idx === -1){ toast('That interview couldn’t be found.', 'error'); return; }
+      var now = Date.now();
+      var rt = iv.rating, t = ratingTotal(rt);
+      var out = deepClone(iv);
+      out.candidateName = iv.candidateName.trim();
+      out.rating = {
+        scores: deepClone(rt.scores), askedQuestions: rt.askedQuestions, track: rt.track || '', redFlags: (rt.redFlags || '').trim(),
+        total: t.total, max: RUBRIC_MAX,
+        ratedBy: rt.ratedBy || e.editedBy, ratedAt: rt.ratedAt || now
+      };
+      if (!e.isNewRating){ out.rating.editedBy = e.editedBy; out.rating.editedAt = now; }
+      out.lastEditedBy = e.editedBy; out.lastEditedAt = now; out.updatedAt = now;
+      ns.interviews[idx] = out;
+      setupPick.submittedBy = e.editedBy;
+      this.disabled = true;
+      editState = null;
+      currentView = 'dashboard';
+      publishState(ns, 'Interview for ' + out.candidateName + ' updated', 'interview', out);
     });
   }
 
