@@ -1066,13 +1066,55 @@
   // Pulls the latest candidates/questions/interviews from the Sheet. Never
   // throws outward — on any failure it just leaves whatever's already
   // loaded (cached copy or bundled seed data) in place and says so.
+  // Roster display: "Wednesday Sep 16" and "1:45–2:15 PM".
+  var DAY_NAMES = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  var MON_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  function fmtCandDate(v){
+    if (v === null || v === undefined || v === '') return '';
+    var d = null;
+    if (typeof v === 'number' && v > 20000 && v < 80000) d = new Date(Math.round((v - 25569) * 86400000) + new Date().getTimezoneOffset() * 60000); // Excel serial
+    else {
+      var str = String(v).trim();
+      if (/^(Sunday|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday) [A-Z][a-z]{2} \d{1,2}$/.test(str)) return str;
+      // only reformat real dates (with a year), not free text like "Sep 5"
+      if (/\d{4}/.test(str) && !isNaN(Date.parse(str))){
+        d = /^\d{4}-\d{2}-\d{2}$/.test(str) ? new Date(str + 'T12:00:00') : new Date(str);
+      } else return str;
+    }
+    if (!d || isNaN(d.getTime())) return String(v);
+    return DAY_NAMES[d.getDay()] + ' ' + MON_NAMES[d.getMonth()] + ' ' + d.getDate();
+  }
+  function fmtTimeSlot(v){
+    var str = String(v === null || v === undefined ? '' : v).trim();
+    if (!str || /[ap]\.?m\.?/i.test(str)) return str;
+    var m = str.match(/^(\d{1,2})(:\d{2})?\s*([-–—]|to)\s*(\d{1,2})(:\d{2})?$/i);
+    // interviews run in the daytime: 8–11 is morning, 12 and 1–7 are afternoon
+    var per = function(h){ h = parseInt(h, 10); return (h >= 8 && h <= 11) ? 'AM' : 'PM'; };
+    if (m){
+      var p1 = per(m[1]), p2 = per(m[4]);
+      var a = m[1] + (m[2] || ''), b = m[4] + (m[5] || '');
+      return p1 === p2 ? a + '–' + b + ' ' + p2 : a + ' ' + p1 + '–' + b + ' ' + p2;
+    }
+    var one = str.match(/^(\d{1,2})(:\d{2})?$/);
+    if (one) return str + ' ' + per(one[1]);
+    return str;
+  }
+  function normalizeCandidates(list){
+    return (list || []).map(function(c){
+      if (!c) return c;
+      c.date = fmtCandDate(c.date);
+      c.timeSlot = fmtTimeSlot(c.timeSlot);
+      return c;
+    });
+  }
+
   function syncFromSheets(showToastOnFail){
     if (!sheetsConfigured()) return Promise.resolve(false);
     setSyncIndicator(true, 'syncing…');
     return fetch(SHEETS_URL, { method: 'GET', cache: 'no-store' })
       .then(function(res){ if (!res.ok) throw new Error('HTTP ' + res.status); return res.json(); })
       .then(function(data){
-        if (data && Array.isArray(data.candidates)) state.candidates = data.candidates;
+        if (data && Array.isArray(data.candidates)) state.candidates = normalizeCandidates(data.candidates);
         if (data && Array.isArray(data.questions)) state.questions = data.questions;
         if (data && Array.isArray(data.interviews)) state.interviews = dedupeInterviews(data.interviews);
         saveLocal(state);
@@ -1347,8 +1389,8 @@
         id: uid('cand'),
         name: name,
         email: iEmail!==-1 ? String(row[iEmail]||'').trim() : '',
-        date: iDate!==-1 ? String(row[iDate]||'').trim() : '',
-        timeSlot: iSlot!==-1 ? String(row[iSlot]||'').trim() : '',
+        date: iDate!==-1 ? fmtCandDate(row[iDate]) : '',
+        timeSlot: iSlot!==-1 ? fmtTimeSlot(row[iSlot]) : '',
         interviewer: iInterviewer!==-1 ? String(row[iInterviewer]||'').trim() : '',
         notetaker: iNotetaker!==-1 ? String(row[iNotetaker]||'').trim() : ''
       });
@@ -1468,6 +1510,7 @@
     // the background so the UI never sits on a blank screen waiting.
     var cached = loadLocal();
     if (cached) state = cached;
+    state.candidates = normalizeCandidates(state.candidates);
     currentView = 'dashboard';
     renderView();
     syncFromSheets(true);
