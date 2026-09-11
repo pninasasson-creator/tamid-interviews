@@ -281,7 +281,10 @@
   .qa-card .q-text{ font-weight:600; margin-bottom:8px; font-size:14.5px; }
   .qa-card textarea{ width:100%; min-height:90px; padding:10px 12px; border-radius:8px; border:1px solid var(--border); background:var(--bg); color:var(--text); resize:vertical; font-size:13.5px; }
   .qa-card .summary-label{ font-size:11.5px; text-transform:uppercase; letter-spacing:.04em; color:var(--text-muted); margin:10px 0 4px; font-weight:600; }
-  .qa-card textarea.summary{ min-height:44px; font-size:12.5px; color:var(--text-muted); }
+  .qa-card textarea.summary{ min-height:44px; font-size:13px; line-height:1.5; resize:none; overflow:hidden; }
+  #rv-overall{ resize:none; overflow:hidden; line-height:1.5; }
+  .ai-status{ display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; padding:12px 16px; margin-bottom:18px; border-radius:var(--radius); border:1px solid var(--border); background:var(--surface); font-size:13px; color:var(--text-muted); }
+  .ai-status strong{ color:var(--text); }
   .not-asked-flag{ color:var(--warning); font-size:12px; font-weight:600; margin-left:8px; }
 
   .doc-preview{ font-family:'Source Sans 3',sans-serif; }
@@ -344,6 +347,16 @@
   var draftCandidates = null;
   var draftQuestions = null;
   var setupPick = { candidateName: '', submittedBy: '', useCustomName: false };
+  // Exec board — the "Submitted by" dropdown. Edit this list when the board changes.
+  var BOARD_MEMBERS = ['Hannah M', 'Emma N', 'Drew S', 'Tatum L', 'Pnina S', 'Alex E', 'Ben B', 'Harrison G', 'Sammy U', 'Tory K', 'Emma G', 'Samantha O']
+    .sort(function(a, b){ return a.localeCompare(b); });
+  function boardOptionsHtml(selected){
+    var list = BOARD_MEMBERS.slice();
+    if (selected && list.indexOf(selected) === -1) list.push(selected); // keep an older free-typed name visible
+    return '<option value="">Choose your name…</option>' + list.map(function(n){
+      return '<option value="' + escapeHtml(n) + '"' + (n === selected ? ' selected' : '') + '>' + escapeHtml(n) + '</option>';
+    }).join('');
+  }
   var recSession = null;           // active recording session
   var reviewDraft = null;          // Q&A draft awaiting submit
   var isReadOnly = false;
@@ -642,25 +655,245 @@
     return false;
   }
 
+  // Speech-to-text has no punctuation, so an "answer" is often one giant
+  // run-on sentence. Break it into short chunks at sentence ends, or failing
+  // that at joining words (and / but / because / so…), then keep the most
+  // information-dense chunks. This is the no-AI fallback.
+  function chunkAnswer(text){
+    var sentences = (String(text || '').match(/[^.!?]+[.!?]*/g) || []).map(function(x){ return x.trim(); }).filter(Boolean);
+    var chunks = [];
+    sentences.forEach(function(sent){
+      var words = sent.split(/\s+/);
+      if (words.length <= 28){ chunks.push(sent); return; }
+      var pieces = sent.split(/\s+(?=(?:and|but|so|because|which|then|also|since|although|though|plus)\s)/i);
+      var buf = '';
+      pieces.forEach(function(pc){
+        var cand = buf ? buf + ' ' + pc : pc;
+        if (cand.split(/\s+/).length < 8) { buf = cand; return; }
+        if (cand.split(/\s+/).length > 30 && buf){ chunks.push(buf); buf = pc; return; }
+        chunks.push(cand); buf = '';
+      });
+      if (buf){ if (chunks.length && buf.split(/\s+/).length < 6) chunks[chunks.length-1] += ' ' + buf; else chunks.push(buf); }
+    });
+    return chunks.map(function(c){ return c.replace(/^(and|but|so|because|which|then|also|um|uh|like)\s+/i, '').trim(); }).filter(function(c){ return c.split(/\s+/).length >= 4; });
+  }
+  function chunkScore(c){
+    var toks = contentTokens(c).filter(function(w){ return w.length > 3; });
+    var uniq = {}; toks.forEach(function(w){ uniq[w] = 1; });
+    var n = Object.keys(uniq).length;
+    if (/\d/.test(c)) n += 1;                                   // specifics: numbers, years
+    if (/\b(i|my|me)\b/i.test(c)) n += 0.5;                     // the candidate talking about themselves
+    return n / Math.sqrt(c.split(/\s+/).length);                // dense > long
+  }
+  function tidy(c){ c = c.trim().replace(/\s+/g, ' '); return c.charAt(0).toUpperCase() + c.slice(1); }
+  function keyLines(text, n){
+    var chunks = chunkAnswer(text).filter(function(c){ return !looksLikeInterviewerLine(c); });
+    var ranked = chunks.slice().sort(function(a,b){ return chunkScore(b) - chunkScore(a); }).slice(0, n || 3);
+    return chunks.filter(function(c){ return ranked.indexOf(c) !== -1; }).map(tidy);
+  }
+  function standoutQuote(text){
+    var best = null, bestScore = 0;
+    chunkAnswer(text).forEach(function(c){
+      var wc = c.split(/\s+/).length;
+      if (wc < 6 || wc > 28 || looksLikeInterviewerLine(c)) return;
+      if (!/\b(i|i'm|im|my|me|we)\b/i.test(c)) return;
+      var sc = chunkScore(c) + (/\b(love|believe|passion|proud|learned|realized|care|dream|goal|always|never|favorite|excited|value)\b/i.test(c) ? 1.5 : 0);
+      if (sc > bestScore){ bestScore = sc; best = c; }
+    });
+    return best ? tidy(best) : '';
+  }
+  function formatSummary(bullets, quotes){
+    var out = (bullets || []).filter(Boolean).map(function(b){ return '• ' + b.replace(/^[•\-*\s]+/, ''); }).join('\n');
+    var qs = (quotes || []).filter(Boolean);
+    if (qs.length) out += (out ? '\n\n' : '') + 'Standout quote' + (qs.length > 1 ? 's' : '') + ':\n' + qs.map(function(q){ return '“' + q.replace(/^["“”']+|["“”']+$/g, '') + '”'; }).join('\n');
+    return out;
+  }
   function summarize(text, maxSentences){
-    var sentences = (text.match(/[^.!?]+[.!?]*/g) || []).map(function(s){ return s.trim(); }).filter(Boolean);
-    if (!sentences.length) return '';
-    var candidateSentences = sentences.filter(function(s){ return !looksLikeInterviewerLine(s); });
-    var pool = candidateSentences.length ? candidateSentences : sentences; // don't summarize into nothing if the filter caught everything
-    var ranked = pool.slice().sort(function(a,b){ return b.length - a.length; }).slice(0, maxSentences || 2);
-    return pool.filter(function(s){ return ranked.indexOf(s) !== -1; }).join(' ');
+    if (!String(text || '').trim()) return '';
+    var q = standoutQuote(text);
+    var lines = keyLines(text, maxSentences || 3).filter(function(l){ return l !== q; });
+    return formatSummary(lines, q ? [q] : []);
   }
 
   function buildOverallSummary(candidateName, qa, opening){
     var answered = qa.filter(function(x){ return x.asked && x.answerText.trim(); });
-    var lines = [];
-    lines.push(candidateName + ' — ' + answered.length + ' of ' + qa.length + ' bank questions covered.');
-    answered.slice(0, 5).forEach(function(x){
-      var s = summarize(x.answerText, 1);
-      if (s) lines.push('On "' + x.questionText + '": ' + s);
+    var lines = [candidateName + ' — ' + answered.length + ' of ' + qa.length + ' bank questions covered.'];
+    var bullets = [];
+    answered.forEach(function(x){ var k = keyLines(x.answerText, 1)[0]; if (k) bullets.push(k); });
+    if (!answered.length && opening) bullets = keyLines(opening, 3);
+    var quotes = [];
+    answered.forEach(function(x){ var q = standoutQuote(x.answerText); if (q) quotes.push(q); });
+    quotes = quotes.sort(function(a,b){ return chunkScore(b) - chunkScore(a); }).slice(0, 2);
+    return lines.join('') + '\n\n' + formatSummary(bullets.slice(0, 6), quotes);
+  }
+
+
+
+  /* ============================================================
+     AI summaries — Chrome's built-in AI (Gemini Nano, the Prompt API).
+     Runs entirely on this computer: free, no API key, and the interview
+     never leaves the laptop. Needs a recent desktop Chrome on a machine
+     Chrome supports for built-in AI (roughly 16 GB RAM or a 4 GB+ GPU,
+     ~22 GB free disk for the one-time model download). Anywhere else the
+     review screen falls back to the no-AI key lines above.
+     ============================================================ */
+  var AI_LANG = { expectedInputs: [{ type: 'text', languages: ['en'] }], expectedOutputs: [{ type: 'text', languages: ['en'] }] };
+  var AI_SYSTEM = 'You help a college business club’s exec board review membership interviews. ' +
+    'You are given one interview question and a speech-to-text transcript of the candidate’s answer. ' +
+    'The transcript has no punctuation, may contain mis-heard words, and may include the interviewer’s own follow-up questions or filler ("okay", "great") — ignore those. ' +
+    'Write 2 to 4 short bullet points (each under 20 words) capturing what the candidate actually said: specific experiences, examples, reasons, skills. ' +
+    'Write bullets in third person ("Leads group projects as the organizer"), no filler, and never invent details that are not in the transcript. ' +
+    'Also pick 0 to 2 standout quotes: memorable, specific, or revealing lines copied word-for-word from the transcript, each under 25 words. ' +
+    'If the answer is empty or unrelated, return empty lists.';
+  var AI_Q_SCHEMA = { type: 'object', properties: {
+    bullets: { type: 'array', items: { type: 'string' }, maxItems: 4 },
+    quotes: { type: 'array', items: { type: 'string' }, maxItems: 2 }
+  }, required: ['bullets', 'quotes'] };
+  var AI_OVERALL_SCHEMA = { type: 'object', properties: {
+    overview: { type: 'string' },
+    strengths: { type: 'array', items: { type: 'string' }, maxItems: 4 },
+    concerns: { type: 'array', items: { type: 'string' }, maxItems: 3 },
+    quotes: { type: 'array', items: { type: 'string' }, maxItems: 3 }
+  }, required: ['overview', 'strengths', 'concerns', 'quotes'] };
+
+  function aiApi(){ return (typeof LanguageModel !== 'undefined') ? LanguageModel : null; }
+  function aiAvailability(){
+    var LM = aiApi();
+    if (!LM || !LM.availability) return Promise.resolve('unsupported');
+    return LM.availability(AI_LANG).catch(function(){ return LM.availability(); }).catch(function(){ return 'unavailable'; });
+  }
+  var aiBaseSession = null;
+  function aiGetSession(onProgress){
+    if (aiBaseSession) return Promise.resolve(aiBaseSession);
+    var opts = Object.assign({}, AI_LANG, {
+      initialPrompts: [{ role: 'system', content: AI_SYSTEM }],
+      monitor: function(m){ m.addEventListener('downloadprogress', function(e){ if (onProgress) onProgress(e.loaded); }); }
     });
-    if (!answered.length && opening) lines.push(summarize(opening, 2));
-    return lines.join(' ');
+    return aiApi().create(opts).then(function(sess){ aiBaseSession = sess; return sess; });
+  }
+  function aiPromptJson(base, text, schema){
+    var clonePromise = base.clone ? base.clone() : Promise.resolve(base);
+    return clonePromise.then(function(sess){
+      return sess.prompt(text, { responseConstraint: schema }).then(function(raw){
+        if (sess !== base && sess.destroy) sess.destroy();
+        var m = String(raw).match(/\{[\s\S]*\}/);
+        return JSON.parse(m ? m[0] : raw);
+      }, function(err){ if (sess !== base && sess.destroy) sess.destroy(); throw err; });
+    });
+  }
+  // Only keep "quotes" that really appear in the transcript — the model
+  // isn't allowed to put words in the candidate's mouth.
+  function quoteIsReal(q, transcript){
+    var nq = normalize(q), nt = ' ' + normalize(transcript) + ' ';
+    if (!nq || nq.split(' ').length < 4) return false;
+    if (nt.indexOf(' ' + nq + ' ') !== -1) return true;
+    var qw = nq.split(' '), tset = {};
+    nt.split(' ').forEach(function(w){ tset[w] = true; });
+    var hit = qw.filter(function(w){ return tset[w]; }).length;
+    return hit / qw.length >= 0.9;
+  }
+  function aiSummarizeAnswer(base, question, answer){
+    var text = 'Interview question: ' + question + '\n\nTranscript of the answer:\n' + String(answer).slice(0, 9000);
+    return aiPromptJson(base, text, AI_Q_SCHEMA).then(function(r){
+      var bullets = (r.bullets || []).map(function(b){ return String(b).trim(); }).filter(Boolean).slice(0, 4);
+      var quotes = (r.quotes || []).map(function(q){ return tidy(String(q).replace(/^["“”']+|["“”'.]+$/g, '')); }).filter(function(q){ return quoteIsReal(q, answer); }).slice(0, 2);
+      if (!bullets.length && !quotes.length) throw new Error('empty');
+      return { bullets: bullets, quotes: quotes };
+    });
+  }
+  function aiSummarizeOverall(base, name, perQ){
+    var body = perQ.map(function(x){
+      return 'Q: ' + x.question + '\n' + x.bullets.map(function(b){ return '- ' + b; }).join('\n') +
+        (x.quotes.length ? '\nQuotes: ' + x.quotes.map(function(q){ return '"' + q + '"'; }).join(' ') : '');
+    }).join('\n\n');
+    var text = 'Here are notes from every answer in ' + name + '’s interview.\n\n' + body +
+      '\n\nNow write the overall picture for the exec board: "overview" = 1–2 sentences on who this candidate is and how the interview went; ' +
+      '"strengths" = up to 4 short bullets on what stood out positively; "concerns" = up to 3 short bullets on weak spots, vague answers, or things to follow up on (empty if none); ' +
+      '"quotes" = the 1–3 best quotes, copied exactly from the Quotes above. Base everything only on these notes.';
+    return aiPromptJson(base, text, AI_OVERALL_SCHEMA);
+  }
+  function formatOverall(name, coveredLine, r, allQuotes, transcript){
+    var out = coveredLine + '\n\n' + (r.overview ? String(r.overview).trim() + '\n\n' : '');
+    if (r.strengths && r.strengths.length) out += 'Strengths:\n' + r.strengths.map(function(b){ return '• ' + b; }).join('\n') + '\n\n';
+    if (r.concerns && r.concerns.length) out += 'Concerns / follow up on:\n' + r.concerns.map(function(b){ return '• ' + b; }).join('\n') + '\n\n';
+    var quotes = (r.quotes || []).map(function(q){ return tidy(String(q).replace(/^["“”']+|["“”'.]+$/g, '')); }).filter(function(q){ return quoteIsReal(q, transcript); });
+    if (!quotes.length) quotes = allQuotes.slice(0, 2);
+    if (quotes.length) out += 'Standout quotes:\n' + quotes.slice(0, 3).map(function(q){ return '“' + q + '”'; }).join('\n');
+    return out.trim();
+  }
+
+  // Drives the review screen: writes AI summaries into each card as they
+  // finish, without touching any summary the reviewer has already edited.
+  function setAiStatus(html, showBtn, btnLabel){
+    var el = document.getElementById('ai-status-text');
+    var btn = document.getElementById('ai-run-btn');
+    if (el) el.innerHTML = html;
+    if (btn){ btn.hidden = !showBtn; if (btnLabel) btn.textContent = btnLabel; }
+  }
+  function aiCheckAndMaybeRun(){
+    var d = reviewDraft;
+    aiAvailability().then(function(av){
+      if (reviewDraft !== d) return;
+      d.aiAvailability = av;
+      if (av === 'available') runAiSummaries(false);
+      else if (av === 'downloadable' || av === 'downloading' || av === 'after-download')
+        setAiStatus('<strong>AI summaries are ready to turn on.</strong> Chrome needs a one-time download of its built-in AI model (it stays on this computer). Showing quick key lines until then.', true, '✨ Turn on AI summaries');
+      else if (av === 'unsupported')
+        setAiStatus('AI summaries need an up-to-date <strong>Google Chrome</strong> on a laptop/desktop. Showing quick key lines instead — you can edit them.', false);
+      else
+        setAiStatus('This computer can’t run Chrome’s built-in AI (it needs about 16 GB of RAM and ~22 GB of free disk space). Showing quick key lines instead — you can edit them.', false);
+    });
+  }
+  function runAiSummaries(force){
+    var d = reviewDraft;
+    if (!d || d.aiRunning) return;
+    d.aiRunning = true;
+    setAiStatus('✨ Starting AI…', false);
+    aiGetSession(function(frac){
+      if (reviewDraft === d) setAiStatus('✨ Downloading Chrome’s AI model (one time only)… ' + Math.round((frac || 0) * 100) + '%', false);
+    }).then(function(base){
+      var todo = d.qa.map(function(qa, i){ return i; }).filter(function(i){ return d.qa[i].answerText && d.qa[i].answerText.trim(); });
+      var perQ = [];
+      var n = 0;
+      return todo.reduce(function(chain, i){
+        return chain.then(function(){
+          if (reviewDraft !== d) return;
+          n++;
+          setAiStatus('✨ Writing AI summaries… (' + n + ' of ' + todo.length + ')', false);
+          var qa = d.qa[i];
+          return aiSummarizeAnswer(base, qa.questionText, qa.answerText).then(function(r){
+            perQ.push({ question: qa.questionText, bullets: r.bullets, quotes: r.quotes });
+            if (force || !qa.summaryEdited){
+              qa.summary = formatSummary(r.bullets, r.quotes);
+              qa.summaryEdited = false;
+              var ta = document.querySelector('textarea.summary[data-i="' + i + '"]');
+              if (ta){ ta.value = qa.summary; autosizeQ(ta); }
+            }
+          }, function(){ /* keep the key-lines fallback for this one */ });
+        });
+      }, Promise.resolve()).then(function(){
+        if (reviewDraft !== d) return;
+        if (!perQ.length){ setAiStatus('The AI didn’t have enough transcript to summarize — showing key lines instead.', true, '↻ Try AI again'); return; }
+        setAiStatus('✨ Writing the overall summary…', false);
+        var answered = d.qa.filter(function(x){ return x.asked && x.answerText.trim(); }).length;
+        var covered = d.candidateName + ' — ' + answered + ' of ' + d.qa.length + ' bank questions covered.';
+        var allQuotes = [].concat.apply([], perQ.map(function(x){ return x.quotes; }));
+        var transcript = d.qa.map(function(x){ return x.answerText; }).join(' ');
+        return aiSummarizeOverall(base, d.candidateName, perQ).then(function(r){
+          if (reviewDraft !== d) return;
+          if (force || !d.overallEdited){
+            d.overallSummary = formatOverall(d.candidateName, covered, r, allQuotes, transcript);
+            d.overallEdited = false;
+            var ta = document.getElementById('rv-overall');
+            if (ta){ ta.value = d.overallSummary; autosizeQ(ta); }
+          }
+        }, function(){}).then(function(){
+          if (reviewDraft === d) setAiStatus('✨ AI summaries done — written on this computer by Chrome’s built-in AI. Double-check them and edit anything that’s off.', true, '↻ Redo AI summaries');
+        });
+      });
+    }).catch(function(err){
+      if (reviewDraft === d) setAiStatus('Couldn’t start Chrome’s AI (' + escapeHtml((err && (err.name || err.message)) || 'error') + '). Showing quick key lines instead.', true, '↻ Try AI again');
+    }).then(function(){ d.aiRunning = false; });
   }
 
   /* ============================================================
@@ -876,7 +1109,7 @@
       lines.push('');
       lines.push('Q: ' + qa.questionText + (qa.asked ? '' : '  (not confidently detected)'));
       lines.push('A: ' + (qa.answerText || '—'));
-      if (qa.summary) lines.push('Summary: ' + qa.summary);
+      if (qa.summary) lines.push('Summary:\n' + qa.summary);
     });
     return lines.join('\n');
   }
@@ -1174,7 +1407,7 @@
       return '<div class="qa-card" style="cursor:default;">' +
         '<div class="q-text">' + escapeHtml(qa.questionText) + flagText + '</div>' +
         '<div style="white-space:pre-wrap;">' + escapeHtml(qa.answerText || '—') + '</div>' +
-        (qa.summary ? '<div class="summary-label">Summary</div><div style="font-size:12.5px;color:var(--text-muted);">' + escapeHtml(qa.summary) + '</div>' : '') +
+        (qa.summary ? '<div class="summary-label">Summary</div><div style="font-size:13px;white-space:pre-wrap;line-height:1.5;">' + escapeHtml(qa.summary) + '</div>' : '') +
       '</div>';
     }).join('');
     overlay.innerHTML =
@@ -1182,7 +1415,7 @@
         '<div class="card-head"><h3>' + escapeHtml(iv.candidateName) + '</h3><button class="btn btn-sm" id="doc-close">Close</button></div>' +
         '<div class="card-pad doc-preview">' +
           '<p class="hint" style="margin-bottom:16px;">Interviewed by ' + escapeHtml(iv.submittedBy||'—') + ' &middot; ' + fmtDate(iv.submittedAt) + ' &middot; ' + fmtDuration(iv.durationSec) + '</p>' +
-          '<h4>Summary</h4><p style="margin-bottom:18px;line-height:1.6;">' + escapeHtml(iv.overallSummary || '—') + '</p>' +
+          '<h4>Summary</h4><p style="margin-bottom:18px;line-height:1.6;white-space:pre-wrap;">' + escapeHtml(iv.overallSummary || '—') + '</p>' +
           (iv.openingRemarks && iv.openingRemarks.trim() ? '<h4>Opening remarks / other</h4><p style="margin-bottom:18px;white-space:pre-wrap;">' + escapeHtml(iv.openingRemarks) + '</p>' : '') +
           qaHtml +
           '<div style="display:flex;gap:8px;margin-top:14px;">' +
@@ -1405,8 +1638,8 @@
           '<input id="candidate-custom" type="text" placeholder="Full name">' +
         '</div>' +
         '<div class="field-group">' +
-          '<label>Submitted by (interviewer)</label>' +
-          '<input id="submitted-by" type="text" placeholder="Your name" value="' + escapeHtml(setupPick.submittedBy) + '">' +
+          '<label>Submitted by</label>' +
+          '<select id="submitted-by">' + boardOptionsHtml(setupPick.submittedBy) + '</select>' +
         '</div>' +
         '<button class="btn btn-primary" id="begin-btn" style="width:100%;justify-content:center;padding:12px;">Begin interview</button>' +
       '</div>' +
@@ -1436,12 +1669,12 @@
       customGroup.hidden = sel.value !== '__other__';
       if (sel.value === '__other__') customInput.focus();
     });
-    root.querySelector('#submitted-by').addEventListener('input', function(e){ setupPick.submittedBy = e.target.value; });
+    root.querySelector('#submitted-by').addEventListener('change', function(e){ setupPick.submittedBy = e.target.value; });
     root.querySelector('#begin-btn').addEventListener('click', function(){
       var name = sel.value === '__other__' ? customInput.value.trim() : sel.value;
       var submittedBy = document.getElementById('submitted-by').value.trim();
       if (!name){ toast('Choose or type the candidate’s name first.', 'warn'); return; }
-      if (!submittedBy){ toast('Enter your name in “Submitted by” first.', 'warn'); return; }
+      if (!submittedBy){ toast('Choose your name under “Submitted by” first.', 'warn'); return; }
       setupPick.candidateName = name;
       setupPick.submittedBy = submittedBy;
       forcePasteMode = false;
@@ -1730,7 +1963,7 @@
       return '<div class="qa-card">' +
         '<div class="q-text">' + escapeHtml(qa.questionText) + tagsHtml + ' ' + flag + '</div>' +
         '<textarea data-i="' + i + '" data-field="answerText">' + escapeHtml(qa.answerText) + '</textarea>' +
-        '<div class="summary-label">Auto-summary (editable)</div>' +
+        '<div class="summary-label">Summary (editable)</div>' +
         '<textarea class="summary" data-i="' + i + '" data-field="summary">' + escapeHtml(qa.summary) + '</textarea>' +
       '</div>';
     }).join('');
@@ -1738,9 +1971,10 @@
     return '' +
     '<button class="btn btn-sm" id="back-to-recording" style="margin-bottom:14px;">← Back</button>' +
     '<div class="view-head"><div><h2>Review before submitting</h2><p class="sub">Fix anything the auto-detection missed, then submit — this becomes part of the shared record.</p></div></div>' +
+    '<div class="ai-status" id="ai-status"><span id="ai-status-text">Checking for AI…</span><button class="btn btn-sm" id="ai-run-btn" hidden>✨ Turn on AI summaries</button></div>' +
     '<div class="card card-pad" style="margin-bottom:18px;">' +
       '<div class="field-group"><label>Candidate</label><input id="rv-candidate" value="' + escapeHtml(d.candidateName) + '"></div>' +
-      '<div class="field-group" style="margin-bottom:0;"><label>Submitted by</label><input id="rv-submitted-by" value="' + escapeHtml(d.submittedBy) + '"></div>' +
+      '<div class="field-group" style="margin-bottom:0;"><label>Submitted by</label><select id="rv-submitted-by">' + boardOptionsHtml(d.submittedBy) + '</select></div>' +
     '</div>' +
     (d.opening && d.opening.trim() ? '<div class="qa-card"><div class="q-text">Opening remarks / other speech</div><textarea id="rv-opening">' + escapeHtml(d.opening) + '</textarea></div>' : '') +
     qaCards +
@@ -1757,16 +1991,28 @@
 
   function wireReview(){
     var root = document.getElementById('view-root');
+    root.addEventListener('change', function(e){ if (e.target.id === 'rv-submitted-by') reviewDraft.submittedBy = e.target.value; });
     root.addEventListener('input', function(e){
       var t = e.target;
       if (t.id === 'rv-candidate') reviewDraft.candidateName = t.value;
       else if (t.id === 'rv-submitted-by') reviewDraft.submittedBy = t.value;
+      else if (t.id === 'rv-submitted-by') reviewDraft.submittedBy = t.value;
       else if (t.id === 'rv-opening') reviewDraft.opening = t.value;
-      else if (t.id === 'rv-overall') reviewDraft.overallSummary = t.value;
+      else if (t.id === 'rv-overall'){ reviewDraft.overallSummary = t.value; reviewDraft.overallEdited = true; autosizeQ(t); }
       else if (t.dataset && t.dataset.field && t.dataset.i !== undefined){
-        reviewDraft.qa[parseInt(t.dataset.i,10)][t.dataset.field] = t.value;
+        var qaItem = reviewDraft.qa[parseInt(t.dataset.i,10)];
+        qaItem[t.dataset.field] = t.value;
+        if (t.dataset.field === 'summary'){ qaItem.summaryEdited = true; autosizeQ(t); }
       }
     });
+    root.querySelectorAll('textarea.summary, #rv-overall').forEach(autosizeQ);
+    var aiBtn = document.getElementById('ai-run-btn');
+    if (aiBtn) aiBtn.addEventListener('click', function(){
+      var redo = /Redo/.test(aiBtn.textContent);
+      if (redo && !window.confirm('Redo the AI summaries? This replaces the current summaries, including any edits you made to them.')) return;
+      runAiSummaries(redo);
+    });
+    aiCheckAndMaybeRun();
     function goBackDiscard(message, confirmLabel){
       showConfirm(message, confirmLabel, function(){
         recSession = null; reviewDraft = null; niStep = 'setup'; forcePasteMode = false;
@@ -1784,7 +2030,7 @@
     var submitBtn = document.getElementById('rv-submit');
     if (submitBtn) submitBtn.addEventListener('click', function(){
       if (!reviewDraft.candidateName.trim()){ toast('Candidate name can’t be empty.', 'warn'); return; }
-      if (!reviewDraft.submittedBy.trim()){ toast('Enter who’s submitting this interview.', 'warn'); return; }
+      if (!reviewDraft.submittedBy.trim()){ toast('Choose who’s submitting this interview.', 'warn'); return; }
       var interview = {
         id: uid('int'),
         candidateName: reviewDraft.candidateName.trim(),
@@ -1793,7 +2039,7 @@
         endedAt: reviewDraft.endedAt,
         durationSec: Math.round(((reviewDraft.endedAt||Date.now()) - (reviewDraft.startedAt||Date.now()))/1000),
         openingRemarks: reviewDraft.opening || '',
-        qa: reviewDraft.qa,
+        qa: reviewDraft.qa.map(function(q){ var c = Object.assign({}, q); delete c.summaryEdited; return c; }),
         overallSummary: reviewDraft.overallSummary || '',
         rawTranscript: reviewDraft.rawTranscript || '',
         submittedAt: Date.now()
