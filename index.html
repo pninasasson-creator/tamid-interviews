@@ -283,6 +283,37 @@
   .qa-card .summary-label{ font-size:11.5px; text-transform:uppercase; letter-spacing:.04em; color:var(--text-muted); margin:10px 0 4px; font-weight:600; }
   .qa-card textarea.summary{ min-height:44px; font-size:13px; line-height:1.5; resize:none; overflow:hidden; }
   #rv-overall{ resize:none; overflow:hidden; line-height:1.5; }
+  .rubric-list{ display:flex; flex-direction:column; gap:12px; margin-bottom:18px; }
+  .rubric-row{ background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:16px 18px; transition:border-color .15s; }
+  .rubric-row.done{ border-color:color-mix(in srgb, var(--success) 45%, var(--border)); }
+  .rubric-row.missing{ border-color:var(--live); box-shadow:0 0 0 3px color-mix(in srgb, var(--live) 18%, transparent); }
+  .rubric-head{ display:flex; justify-content:space-between; gap:14px; align-items:flex-start; margin-bottom:12px; }
+  .rubric-name{ font-weight:700; font-size:15px; }
+  .rubric-criteria{ color:var(--text-muted); font-size:13px; margin-top:2px; line-height:1.45; }
+  .rubric-score-now{ font-size:22px; font-weight:700; font-variant-numeric:tabular-nums; min-width:56px; text-align:right; }
+  .rubric-score-now span{ font-size:12px; color:var(--text-muted); font-weight:600; }
+  .score-row{ display:grid; grid-template-columns:repeat(10, minmax(0,1fr)); gap:6px; }
+  .score-btn{ height:38px; border-radius:8px; border:1px solid var(--border); background:var(--bg); color:var(--text); font-weight:600; cursor:pointer; font-variant-numeric:tabular-nums; transition:background .12s, border-color .12s; }
+  .score-btn:hover{ border-color:var(--accent); }
+  .score-btn.on.band-low{ background:var(--live); border-color:var(--live); color:#fff; }
+  .score-btn.on.band-mid{ background:var(--warning); border-color:var(--warning); color:#fff; }
+  .score-btn.on.band-high{ background:var(--success); border-color:var(--success); color:#fff; }
+  .anchor-row{ display:grid; grid-template-columns:3fr 4fr 3fr; gap:8px; margin-top:8px; font-size:11.5px; color:var(--text-muted); line-height:1.4; }
+  .anchor-row b{ color:var(--text); font-weight:700; margin-right:2px; }
+  .anchor-row span:nth-child(2){ text-align:center; } .anchor-row span:nth-child(3){ text-align:right; }
+  @media (max-width: 640px){ .anchor-row{ grid-template-columns:1fr; } .anchor-row span{ text-align:left !important; } .score-row{ gap:4px; } .score-btn{ height:34px; font-size:13px; } }
+  .rubric-notes{ width:100%; margin-top:10px; padding:8px 10px; border-radius:8px; border:1px solid var(--border); background:var(--bg); color:var(--text); resize:none; overflow:hidden; font-size:13px; min-height:36px; }
+  .rubric-extra{ margin-bottom:18px; }
+  .rubric-extra textarea{ resize:none; overflow:hidden; }
+  .yn-row{ display:flex; gap:8px; flex-wrap:wrap; padding:2px; border-radius:10px; }
+  .yn-row.missing{ box-shadow:0 0 0 2px var(--live); }
+  .yn-btn{ padding:9px 18px; border-radius:8px; border:1px solid var(--border); background:var(--bg); color:var(--text); font-weight:600; cursor:pointer; }
+  .yn-btn.on.yes{ background:var(--success); border-color:var(--success); color:#fff; }
+  .yn-btn.on.no{ background:var(--live); border-color:var(--live); color:#fff; }
+  .rubric-footer{ position:sticky; bottom:0; display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap; padding:14px 18px; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow); }
+  .rubric-total{ font-size:26px; font-weight:800; font-variant-numeric:tabular-nums; line-height:1; }
+  .rubric-total span{ font-size:14px; color:var(--text-muted); font-weight:600; }
+  .flag-pill{ background:color-mix(in srgb, var(--live) 14%, transparent); color:var(--live); }
   .ai-status{ display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; padding:12px 16px; margin-bottom:18px; border-radius:var(--radius); border:1px solid var(--border); background:var(--surface); font-size:13px; color:var(--text-muted); }
   .ai-status strong{ color:var(--text); }
   .not-asked-flag{ color:var(--warning); font-size:12px; font-weight:600; margin-left:8px; }
@@ -342,7 +373,7 @@
      View / session state (per-viewer, not persisted)
      ============================================================ */
   var currentView = 'dashboard';   // dashboard | new-interview | manage
-  var niStep = 'setup';            // setup | recording | review
+  var niStep = 'setup';            // setup | recording | review | rating
   var manageTab = 'candidates';    // candidates | questions
   var draftCandidates = null;
   var draftQuestions = null;
@@ -350,6 +381,48 @@
   // Exec board — the "Submitted by" dropdown. Edit this list when the board changes.
   var BOARD_MEMBERS = ['Hannah M', 'Emma N', 'Drew S', 'Tatum L', 'Pnina S', 'Alex E', 'Ben B', 'Harrison G', 'Sammy U', 'Tory K', 'Emma G', 'Samantha O']
     .sort(function(a, b){ return a.localeCompare(b); });
+  // Interview Evaluation rubric (mandatory). Each row is scored 1–10;
+  // low / mid / high describe what a 1–3, 4–7 and 8–10 look like so every
+  // board member scores the same way. Edit wording here.
+  var RUBRIC = [
+    { key:'social', name:'Social Skills', criteria:'Engages naturally, builds rapport, listens actively and responds to what was actually asked',
+      low:'Short or disengaged; misses the point of questions', mid:'Friendly and polite, some back-and-forth', high:'Easy to talk to; builds on what we say, feels like a real conversation' },
+    { key:'confidence', name:'Confidence & Presence', criteria:'Appears self-assured, good body language, composed under pressure',
+      low:'Visibly rattled, hard to hear, avoids eye contact', mid:'Some nerves but recovers', high:'Calm and self-assured throughout, even on tough questions' },
+    { key:'knowledge', name:'Knowledge of TAMID', criteria:'Understands mission/values, connects their interests, shows enthusiasm',
+      low:'Knows little about TAMID; generic reasons for joining', mid:'Knows the basics (consulting, Israeli startups)', high:'Specific about TAMID’s mission/tracks and ties it to their own goals' },
+    { key:'communication', name:'Communication / Well-Spoken', criteria:'Clear, concise, organized answers; minimal filler words',
+      low:'Rambling or hard to follow, lots of filler', mid:'Mostly clear, sometimes loses the thread', high:'Structured, concise answers that land the point' },
+    { key:'problem', name:'Problem-Solving & Analytical Thinking', criteria:'Structured reasoning, creative/practical solutions, intellectual curiosity',
+      low:'Surface-level answers, no reasoning shown', mid:'Reasonable logic with some depth', high:'Breaks problems down; thoughtful, original ideas' },
+    { key:'teamwork', name:'Teamwork & Leadership Potential', criteria:'Examples of collaboration/leadership, balanced assertiveness, positive group contribution',
+      low:'No real example, or blames others', mid:'One solid example of contributing to a team', high:'Specific example where they led, organized, or resolved conflict' },
+    { key:'professionalism', name:'Professionalism & Preparedness', criteria:'Polished, respectful, prepared, demonstrates maturity',
+      low:'Late, unprepared, or disrespectful', mid:'Respectful and on time; lightly prepared', high:'Clearly prepared, polished, and mature' },
+    { key:'overall', name:'Overall Impression', criteria:'Would this candidate be a good fit for TAMID?',
+      low:'Not a fit right now', mid:'Could be a fit; mixed signals', high:'Strong fit — I’d want them on my project team' }
+  ];
+  var RUBRIC_MAX = RUBRIC.length * 10;
+  var TRACK_OPTIONS = ['Fund', 'Consulting', 'Either', 'Unsure'];
+  function blankRating(){
+    var scores = {};
+    RUBRIC.forEach(function(r){ scores[r.key] = { score: null, notes: '' }; });
+    return { scores: scores, askedQuestions: '', track: '', redFlags: '' };
+  }
+  function ratingTotal(rt){
+    if (!rt || !rt.scores) return null;
+    var t = 0, n = 0;
+    RUBRIC.forEach(function(r){ var x = rt.scores[r.key]; if (x && x.score){ t += x.score; n++; } });
+    return { total: t, scored: n };
+  }
+  function ratingFlags(rt){
+    var f = [];
+    if (!rt) return f;
+    if (rt.askedQuestions === 'no') f.push('Didn’t ask us any questions');
+    if (rt.redFlags && rt.redFlags.trim()) f.push('Red flags noted');
+    return f;
+  }
+
   function boardOptionsHtml(selected){
     var list = BOARD_MEMBERS.slice();
     if (selected && list.indexOf(selected) === -1) list.push(selected); // keep an older free-typed name visible
@@ -359,6 +432,7 @@
   }
   var recSession = null;           // active recording session
   var reviewDraft = null;          // Q&A draft awaiting submit
+  var dashSort = 'newest';         // dashboard table order: newest | score
   var isReadOnly = false;
   var forcePasteMode = false;      // viewer manually bailed out of live mic capture
 
@@ -551,7 +625,14 @@
         if (j.at === ui && idxById.hasOwnProperty(j.questionId)){ current = idxById[j.questionId]; qState[current].asked = true; cueWindow = 0; }
       });
       var norm = normalize(u);
-      var questionLike = QUESTION_OPENER.test(norm) || QUESTION_PHRASE.test(norm) || /\?\s*$/.test(u);
+      // Long lines are almost always the candidate answering. Only treat one
+      // as a question if it STARTS like a question (Chrome sometimes glues
+      // the question and the start of the answer into one line).
+      var wordCount = norm ? norm.split(' ').length : 0;
+      var isLong = wordCount > 30;
+      var questionLike = isLong
+        ? QUESTION_OPENER.test(norm.split(' ').slice(0, 10).join(' '))
+        : (QUESTION_OPENER.test(norm) || QUESTION_PHRASE.test(norm) || /\?\s*$/.test(u));
       if (TRANSITION_CUE.test(norm)) cueWindow = 3;
       var uToks = conceptTokens(norm.replace(new RegExp(TRANSITION_CUE.source, 'g'), ' '));
       var joined = prevToks ? prevToks.concat(uToks) : null;
@@ -569,6 +650,7 @@
         if (x.asked) T = ql ? 0.7 : 0.85;                                  // going back: needs a strong match
         else if (expected[i]) T = cueWindow ? 0.2 : (ql ? 0.3 : 0.65);
         else T = (ql ? 0.42 : 0.75) - (cueWindow ? 0.07 : 0);
+        if (isLong && !questionLike) T += 0.3;                             // a long answer that happens to share words
         var margin = sc - T;
         if (sc > 0 && margin >= 0 && margin > bestMargin){ bestMargin = margin; best = i; }
       });
@@ -665,17 +747,19 @@
     sentences.forEach(function(sent){
       var words = sent.split(/\s+/);
       if (words.length <= 28){ chunks.push(sent); return; }
-      var pieces = sent.split(/\s+(?=(?:and|but|so|because|which|then|also|since|although|though|plus)\s)/i);
-      var buf = '';
+      var pieces = sent.split(/\s+(?=(?:and|but|so|because|which|then|also|since|although|though|plus|for example|for instance|as for|one time)\s)/i);
+      // short fragments ("and keeps us on deadline") attach to the chunk before them
+      var local = [];
       pieces.forEach(function(pc){
-        var cand = buf ? buf + ' ' + pc : pc;
-        if (cand.split(/\s+/).length < 8) { buf = cand; return; }
-        if (cand.split(/\s+/).length > 30 && buf){ chunks.push(buf); buf = pc; return; }
-        chunks.push(cand); buf = '';
+        var n = pc.split(/\s+/).length;
+        var last = local.length ? local[local.length - 1] : null;
+        if (last !== null && n < 6 && last.split(/\s+/).length + n <= 30 && !/^(for example|for instance|as for|one time)\b/i.test(pc)) local[local.length - 1] = last + ' ' + pc;
+        else if (last !== null && last.split(/\s+/).length < 5) local[local.length - 1] = last + ' ' + pc;
+        else local.push(pc);
       });
-      if (buf){ if (chunks.length && buf.split(/\s+/).length < 6) chunks[chunks.length-1] += ' ' + buf; else chunks.push(buf); }
+      chunks.push.apply(chunks, local);
     });
-    return chunks.map(function(c){ return c.replace(/^(and|but|so|because|which|then|also|um|uh|like)\s+/i, '').trim(); }).filter(function(c){ return c.split(/\s+/).length >= 4; });
+    return chunks.map(function(c){ return c.replace(/^(and|but|so|because|which|then|also|um|uh|like)\s+/i, '').replace(/\s+(and|but|so|or|um|uh|like)$/i, '').trim(); }).filter(function(c){ return c.split(/\s+/).length >= 4; });
   }
   function chunkScore(c){
     var toks = contentTokens(c).filter(function(w){ return w.length > 3; });
@@ -687,32 +771,86 @@
   }
   function tidy(c){ c = c.trim().replace(/\s+/g, ' '); return c.charAt(0).toUpperCase() + c.slice(1); }
   function keyLines(text, n){
-    var chunks = chunkAnswer(text).filter(function(c){ return !looksLikeInterviewerLine(c); });
+    var chunks = (Array.isArray(text) ? text : chunkAnswer(text)).filter(function(c){ return !looksLikeInterviewerLine(c); });
     var ranked = chunks.slice().sort(function(a,b){ return chunkScore(b) - chunkScore(a); }).slice(0, n || 3);
     return chunks.filter(function(c){ return ranked.indexOf(c) !== -1; }).map(tidy);
   }
-  function standoutQuote(text){
-    var best = null, bestScore = 0;
-    chunkAnswer(text).forEach(function(c){
-      var wc = c.split(/\s+/).length;
-      if (wc < 6 || wc > 28 || looksLikeInterviewerLine(c)) return;
-      if (!/\b(i|i'm|im|my|me|we)\b/i.test(c)) return;
-      var sc = chunkScore(c) + (/\b(love|believe|passion|proud|learned|realized|care|dream|goal|always|never|favorite|excited|value)\b/i.test(c) ? 1.5 : 0);
-      if (sc > bestScore){ bestScore = sc; best = c; }
-    });
-    return best ? tidy(best) : '';
-  }
-  function formatSummary(bullets, quotes){
-    var out = (bullets || []).filter(Boolean).map(function(b){ return '• ' + b.replace(/^[•\-*\s]+/, ''); }).join('\n');
-    var qs = (quotes || []).filter(Boolean);
-    if (qs.length) out += (out ? '\n\n' : '') + 'Standout quote' + (qs.length > 1 ? 's' : '') + ':\n' + qs.map(function(q){ return '“' + q.replace(/^["“”']+|["“”']+$/g, '') + '”'; }).join('\n');
-    return out;
+  function formatSummary(bullets){
+    return (bullets || []).filter(Boolean).map(function(b){ return '• ' + b.replace(/^[•\-*\s]+/, ''); }).join('\n');
   }
   function summarize(text, maxSentences){
     if (!String(text || '').trim()) return '';
-    var q = standoutQuote(text);
-    var lines = keyLines(text, maxSentences || 3).filter(function(l){ return l !== q; });
-    return formatSummary(lines, q ? [q] : []);
+    return formatSummary(keyLines(text, maxSentences || 3));
+  }
+
+  // Multi-part questions ("Why join TAMID? Why should TAMID want you?")
+  // get a separate, labeled summary section per part.
+  function questionParts(text){
+    var parts = (String(text || '').match(/[^?]+\?+|[^?]+$/g) || []).map(function(x){ return x.trim(); })
+      .filter(function(x){ return conceptTokens(x).length >= 1 && x.split(/\s+/).length >= 3; });
+    return parts.length >= 2 ? parts : [String(text || '').trim()];
+  }
+  function formatSections(sections){
+    if (sections.length === 1 && !sections[0].title) return formatSummary(sections[0].bullets);
+    return sections.map(function(sec, i){
+      var bullets = sec.bullets && sec.bullets.length ? sec.bullets : ['Didn’t clearly answer this part'];
+      var body = bullets.map(function(b){ return '• ' + String(b).replace(/^[•\-*\s]+/, ''); }).join('\n');
+      return 'PART ' + (i + 1) + ' — ' + sec.title + '\n' + body;
+    }).join('\n\n');
+  }
+  // No-AI fallback: guess where the candidate stops answering part 1 and
+  // starts part 2. If the interviewer re-reads a later part mid-answer,
+  // that line is used as the dividing point; otherwise it picks the split
+  // where earlier chunks look most like part 1 and later ones like part 2.
+  // Parts like "Why should TAMID be interested in YOU?" / "What would you
+  // bring?" are about the candidate's value; answers to them sound like
+  // "I bring…", "my skills…". Parts about motivation sound like "I want…",
+  // "I'm excited…". Examples sound like "for example…", "one time…".
+  var PART_KINDS = [
+    { q: /\b(should .*\b(want|interested in|pick|choose|accept|take) you|what (can|would|will) you (bring|offer|add|contribute)|why (should we|you)|what makes you (a good|stand)|good fit)\b/i,
+      a: /\b(i bring|i can bring|i'?d bring|i would bring|i offer|i can offer|my skills?|skill set|skills|strengths?|i'?m good at|i'?m really good|experience (in|with)|contribute|add value|asset|hard ?working|work ethic|reliable|dedicated|as for why|why you should|you should (want|pick|choose)|i would be a|i'?d be a|i'?m a (strong|great|good))\b/i },
+    { q: /\b(example|a time|describe a time|tell us about a time|instance)\b/i,
+      a: /\b(for example|for instance|one time|there was a time|last (semester|year|summer|spring|fall)|in (high school|my class)|recently|when i was)\b/i },
+    { q: /\b(why .*(interested|want|join|apply)|what (drew|draws|attracted|interests))\b/i,
+      a: /\b(i want|i'?m interested|interested in|i love|excited|drawn|passion|the reason|because i|i'?ve always wanted|i heard|my friend told)\b/i }
+  ];
+  var PART_BOUNDARY = /^(and )?(as for|as to|for the second|the second part|second part|for the other|the other part|second question|and why|now why|why you should|as far as why)\b/i;
+  function splitAnswerByParts(parts, answer){
+    var chunks = chunkAnswer(answer);
+    if (!chunks.length) return parts.map(function(){ return []; });
+    var models = buildQuestionModel(parts.map(function(t, i){ return { id: 'p' + i, text: t }; }));
+    var kinds = parts.map(function(t){ for (var i = 0; i < PART_KINDS.length; i++) if (PART_KINDS[i].q.test(t)) return PART_KINDS[i]; return null; });
+    var sc = chunks.map(function(c){
+      var toks = conceptTokens(c);
+      return models.map(function(m, pi){ return scoreUtterance(toks, m) + (kinds[pi] && kinds[pi].a.test(c) ? 1 : 0); });
+    });
+    var bounds = [0];
+    var k = parts.length;
+    for (var pi = 1; pi < k; pi++){
+      var start = bounds[pi - 1], bestAt = -1, bestVal = -Infinity;
+      for (var at = start + 1; at <= chunks.length - (k - pi - 1); at++){
+        var v = 0;
+        for (var ci = start; ci < chunks.length; ci++) v += (ci < at ? 1 : -1) * (sc[ci][pi - 1] - sc[ci][pi]);
+        // an interviewer re-reading this part is a near-certain divider
+        if (looksLikeInterviewerLine(chunks[at] || '') && (sc[at] || [])[pi] >= 0.5) v += 5;
+        if (PART_BOUNDARY.test(chunks[at] || '')) v += 3;                // "as for why you should want me…" 
+        if (v > bestVal){ bestVal = v; bestAt = at; }
+      }
+      if (bestVal <= 0 && pi === 1 && chunks.length > 1 && sc.every(function(r){ return r.every(function(x){ return x === 0; }); })) bestAt = Math.ceil(chunks.length / 2);
+      bounds.push(Math.max(start, bestAt));
+    }
+    bounds.push(chunks.length);
+    return parts.map(function(_, i){ return chunks.slice(bounds[i], bounds[i + 1]); });
+  }
+  function summarizeFor(questionText, answer){
+    if (!String(answer || '').trim()) return '';
+    var parts = questionParts(questionText);
+    if (parts.length === 1) return summarize(answer, 3);
+    var pieces = splitAnswerByParts(parts, answer);
+    return formatSections(parts.map(function(title, i){
+      var t = (pieces[i] || []).map(function(c){ return c.replace(/^(and )?(as for|as to|as far as) (why |the second[^,]*? )?(you should (want|pick|choose) me|tamid should (want|pick) me)?\s*/i, ''); }).filter(function(c){ return c.split(/\s+/).length >= 4; });
+      return { title: title, bullets: t.length ? keyLines(t, 2) : [] };
+    }));
   }
 
   function buildOverallSummary(candidateName, qa, opening){
@@ -721,10 +859,7 @@
     var bullets = [];
     answered.forEach(function(x){ var k = keyLines(x.answerText, 1)[0]; if (k) bullets.push(k); });
     if (!answered.length && opening) bullets = keyLines(opening, 3);
-    var quotes = [];
-    answered.forEach(function(x){ var q = standoutQuote(x.answerText); if (q) quotes.push(q); });
-    quotes = quotes.sort(function(a,b){ return chunkScore(b) - chunkScore(a); }).slice(0, 2);
-    return lines.join('') + '\n\n' + formatSummary(bullets.slice(0, 6), quotes);
+    return lines.join('') + '\n\n' + formatSummary(bullets.slice(0, 6));
   }
 
 
@@ -743,18 +878,15 @@
     'The transcript has no punctuation, may contain mis-heard words, and may include the interviewer’s own follow-up questions or filler ("okay", "great") — ignore those. ' +
     'Write 2 to 4 short bullet points (each under 20 words) capturing what the candidate actually said: specific experiences, examples, reasons, skills. ' +
     'Write bullets in third person ("Leads group projects as the organizer"), no filler, and never invent details that are not in the transcript. ' +
-    'Also pick 0 to 2 standout quotes: memorable, specific, or revealing lines copied word-for-word from the transcript, each under 25 words. ' +
-    'If the answer is empty or unrelated, return empty lists.';
+    'If the answer is empty or unrelated, return an empty list.';
   var AI_Q_SCHEMA = { type: 'object', properties: {
-    bullets: { type: 'array', items: { type: 'string' }, maxItems: 4 },
-    quotes: { type: 'array', items: { type: 'string' }, maxItems: 2 }
-  }, required: ['bullets', 'quotes'] };
+    bullets: { type: 'array', items: { type: 'string' }, maxItems: 4 }
+  }, required: ['bullets'] };
   var AI_OVERALL_SCHEMA = { type: 'object', properties: {
     overview: { type: 'string' },
     strengths: { type: 'array', items: { type: 'string' }, maxItems: 4 },
-    concerns: { type: 'array', items: { type: 'string' }, maxItems: 3 },
-    quotes: { type: 'array', items: { type: 'string' }, maxItems: 3 }
-  }, required: ['overview', 'strengths', 'concerns', 'quotes'] };
+    concerns: { type: 'array', items: { type: 'string' }, maxItems: 3 }
+  }, required: ['overview', 'strengths', 'concerns'] };
 
   function aiApi(){ return (typeof LanguageModel !== 'undefined') ? LanguageModel : null; }
   function aiAvailability(){
@@ -781,44 +913,45 @@
       }, function(err){ if (sess !== base && sess.destroy) sess.destroy(); throw err; });
     });
   }
-  // Only keep "quotes" that really appear in the transcript — the model
-  // isn't allowed to put words in the candidate's mouth.
-  function quoteIsReal(q, transcript){
-    var nq = normalize(q), nt = ' ' + normalize(transcript) + ' ';
-    if (!nq || nq.split(' ').length < 4) return false;
-    if (nt.indexOf(' ' + nq + ' ') !== -1) return true;
-    var qw = nq.split(' '), tset = {};
-    nt.split(' ').forEach(function(w){ tset[w] = true; });
-    var hit = qw.filter(function(w){ return tset[w]; }).length;
-    return hit / qw.length >= 0.9;
-  }
+  function cleanBullets(list, max){ return (list || []).map(function(b){ return String(b).trim(); }).filter(Boolean).slice(0, max); }
   function aiSummarizeAnswer(base, question, answer){
-    var text = 'Interview question: ' + question + '\n\nTranscript of the answer:\n' + String(answer).slice(0, 9000);
-    return aiPromptJson(base, text, AI_Q_SCHEMA).then(function(r){
-      var bullets = (r.bullets || []).map(function(b){ return String(b).trim(); }).filter(Boolean).slice(0, 4);
-      var quotes = (r.quotes || []).map(function(q){ return tidy(String(q).replace(/^["“”']+|["“”'.]+$/g, '')); }).filter(function(q){ return quoteIsReal(q, answer); }).slice(0, 2);
-      if (!bullets.length && !quotes.length) throw new Error('empty');
-      return { bullets: bullets, quotes: quotes };
+    var parts = questionParts(question);
+    var transcript = '\n\nTranscript of the answer:\n' + String(answer).slice(0, 9000);
+    if (parts.length === 1){
+      return aiPromptJson(base, 'Interview question: ' + question + transcript, AI_Q_SCHEMA).then(function(r){
+        var bullets = cleanBullets(r.bullets, 4);
+        if (!bullets.length) throw new Error('empty');
+        return { sections: [{ title: '', bullets: bullets }], bullets: bullets };
+      });
+    }
+    // Multi-part question: one section per part, in order.
+    var schema = { type: 'object', properties: { parts: { type: 'array', minItems: parts.length, maxItems: parts.length, items: AI_Q_SCHEMA } }, required: ['parts'] };
+    var text = 'This interview question has ' + parts.length + ' parts:\n' +
+      parts.map(function(p, i){ return 'Part ' + (i + 1) + ': ' + p; }).join('\n') +
+      '\n\nThe candidate usually answers the parts in order, but may mix them. Sort what they said by which part it answers. ' +
+      'Return "parts" with exactly ' + parts.length + ' entries in the same order, each with 1 to 3 bullets for that part only. ' +
+      'If they never addressed a part, give that part an empty list.' + transcript;
+    return aiPromptJson(base, text, schema).then(function(r){
+      var arr = r.parts || [];
+      var sections = parts.map(function(title, i){ var x = arr[i] || {}; return { title: title, bullets: cleanBullets(x.bullets, 3) }; });
+      var bullets = [].concat.apply([], sections.map(function(x){ return x.bullets; }));
+      if (!bullets.length) throw new Error('empty');
+      return { sections: sections, bullets: bullets };
     });
   }
   function aiSummarizeOverall(base, name, perQ){
     var body = perQ.map(function(x){
-      return 'Q: ' + x.question + '\n' + x.bullets.map(function(b){ return '- ' + b; }).join('\n') +
-        (x.quotes.length ? '\nQuotes: ' + x.quotes.map(function(q){ return '"' + q + '"'; }).join(' ') : '');
+      return 'Q: ' + x.question + '\n' + x.bullets.map(function(b){ return '- ' + b; }).join('\n');
     }).join('\n\n');
     var text = 'Here are notes from every answer in ' + name + '’s interview.\n\n' + body +
       '\n\nNow write the overall picture for the exec board: "overview" = 1–2 sentences on who this candidate is and how the interview went; ' +
-      '"strengths" = up to 4 short bullets on what stood out positively; "concerns" = up to 3 short bullets on weak spots, vague answers, or things to follow up on (empty if none); ' +
-      '"quotes" = the 1–3 best quotes, copied exactly from the Quotes above. Base everything only on these notes.';
+      '"strengths" = up to 4 short bullets on what stood out positively; "concerns" = up to 3 short bullets on weak spots, vague answers, or things to follow up on (empty if none). Base everything only on these notes.';
     return aiPromptJson(base, text, AI_OVERALL_SCHEMA);
   }
-  function formatOverall(name, coveredLine, r, allQuotes, transcript){
+  function formatOverall(name, coveredLine, r){
     var out = coveredLine + '\n\n' + (r.overview ? String(r.overview).trim() + '\n\n' : '');
     if (r.strengths && r.strengths.length) out += 'Strengths:\n' + r.strengths.map(function(b){ return '• ' + b; }).join('\n') + '\n\n';
     if (r.concerns && r.concerns.length) out += 'Concerns / follow up on:\n' + r.concerns.map(function(b){ return '• ' + b; }).join('\n') + '\n\n';
-    var quotes = (r.quotes || []).map(function(q){ return tidy(String(q).replace(/^["“”']+|["“”'.]+$/g, '')); }).filter(function(q){ return quoteIsReal(q, transcript); });
-    if (!quotes.length) quotes = allQuotes.slice(0, 2);
-    if (quotes.length) out += 'Standout quotes:\n' + quotes.slice(0, 3).map(function(q){ return '“' + q + '”'; }).join('\n');
     return out.trim();
   }
 
@@ -832,6 +965,7 @@
   }
   function aiCheckAndMaybeRun(){
     var d = reviewDraft;
+    if (d && d.aiDone){ setAiStatus('✨ AI summaries done — written on this computer by Chrome’s built-in AI. Double-check them and edit anything that’s off.', true, '↻ Redo AI summaries'); return; }
     aiAvailability().then(function(av){
       if (reviewDraft !== d) return;
       d.aiAvailability = av;
@@ -862,9 +996,9 @@
           setAiStatus('✨ Writing AI summaries… (' + n + ' of ' + todo.length + ')', false);
           var qa = d.qa[i];
           return aiSummarizeAnswer(base, qa.questionText, qa.answerText).then(function(r){
-            perQ.push({ question: qa.questionText, bullets: r.bullets, quotes: r.quotes });
+            perQ.push({ question: qa.questionText, bullets: r.bullets });
             if (force || !qa.summaryEdited){
-              qa.summary = formatSummary(r.bullets, r.quotes);
+              qa.summary = formatSections(r.sections);
               qa.summaryEdited = false;
               var ta = document.querySelector('textarea.summary[data-i="' + i + '"]');
               if (ta){ ta.value = qa.summary; autosizeQ(ta); }
@@ -877,17 +1011,16 @@
         setAiStatus('✨ Writing the overall summary…', false);
         var answered = d.qa.filter(function(x){ return x.asked && x.answerText.trim(); }).length;
         var covered = d.candidateName + ' — ' + answered + ' of ' + d.qa.length + ' bank questions covered.';
-        var allQuotes = [].concat.apply([], perQ.map(function(x){ return x.quotes; }));
-        var transcript = d.qa.map(function(x){ return x.answerText; }).join(' ');
         return aiSummarizeOverall(base, d.candidateName, perQ).then(function(r){
           if (reviewDraft !== d) return;
           if (force || !d.overallEdited){
-            d.overallSummary = formatOverall(d.candidateName, covered, r, allQuotes, transcript);
+            d.overallSummary = formatOverall(d.candidateName, covered, r);
             d.overallEdited = false;
             var ta = document.getElementById('rv-overall');
             if (ta){ ta.value = d.overallSummary; autosizeQ(ta); }
           }
         }, function(){}).then(function(){
+          d.aiDone = true;
           if (reviewDraft === d) setAiStatus('✨ AI summaries done — written on this computer by Chrome’s built-in AI. Double-check them and edit anything that’s off.', true, '↻ Redo AI summaries');
         });
       });
@@ -1079,6 +1212,39 @@
     });
     copyText(rowsToCsv(rows), 'Spreadsheet data copied');
   }
+  function exportScoresCsv(){
+    var header = ['Candidate Name'].concat(RUBRIC.map(function(r){ return r.name; }), ['Total (/' + RUBRIC_MAX + ')', 'Asked us questions?', 'Fund or Consulting', 'Red flags / concerns', 'Rated by', 'Submitted At']);
+    var rows = [header];
+    state.interviews.filter(function(iv){ return iv.rating; }).forEach(function(iv){
+      var rt = iv.rating;
+      rows.push([iv.candidateName].concat(RUBRIC.map(function(r){ return (rt.scores[r.key] && rt.scores[r.key].score) || ''; }),
+        [rt.total, rt.askedQuestions === 'yes' ? 'Yes' : rt.askedQuestions === 'no' ? 'No' : '', rt.track || '', rt.redFlags || '', rt.ratedBy || iv.submittedBy, fmtDate(iv.submittedAt)]));
+    });
+    if (rows.length === 1){ toast('No rated interviews yet.', 'warn'); return; }
+    copyText(rowsToCsv(rows), 'Scores copied — paste into Google Sheets');
+  }
+  function ratingHtml(rt){
+    if (!rt) return '';
+    var flags = ratingFlags(rt);
+    return '<h4>Evaluation — ' + rt.total + ' / ' + (rt.max || RUBRIC_MAX) + '</h4>' +
+      '<table style="margin-bottom:10px;"><tbody>' + RUBRIC.map(function(r){
+        var x = rt.scores[r.key] || {};
+        return '<tr><td style="width:45%;">' + escapeHtml(r.name) + '</td><td class="mono" style="width:60px;"><strong>' + (x.score || '—') + '</strong>/10</td><td style="white-space:pre-wrap;">' + escapeHtml(x.notes || '') + '</td></tr>';
+      }).join('') + '</tbody></table>' +
+      '<p style="margin-bottom:6px;"><strong>Asked us questions:</strong> ' + (rt.askedQuestions === 'yes' ? 'Yes' : '<span style="color:var(--live);font-weight:600;">No — red flag</span>') +
+      ' &nbsp;·&nbsp; <strong>Fund or Consulting:</strong> ' + escapeHtml(rt.track || '—') + '</p>' +
+      (rt.redFlags ? '<p style="margin-bottom:18px;white-space:pre-wrap;"><strong style="color:var(--live);">Red flags / concerns:</strong> ' + escapeHtml(rt.redFlags) + '</p>' : '<div style="margin-bottom:18px;"></div>') +
+      '';
+  }
+  function ratingText(rt){
+    if (!rt) return [];
+    var lines = ['', 'EVALUATION — ' + rt.total + ' / ' + (rt.max || RUBRIC_MAX)];
+    RUBRIC.forEach(function(r){ var x = rt.scores[r.key] || {}; lines.push(r.name + ': ' + (x.score || '—') + '/10' + (x.notes ? ' — ' + x.notes : '')); });
+    lines.push('Asked us questions: ' + (rt.askedQuestions === 'yes' ? 'Yes' : 'No (red flag)'));
+    lines.push('Fund or Consulting: ' + (rt.track || '—'));
+    if (rt.redFlags) lines.push('Red flags / concerns: ' + rt.redFlags);
+    return lines;
+  }
   function exportInterviewCsv(iv){
     var rows = [['Candidate Name','Question Text','Audio Link','Transcription','AI Summary','Interviewer Name']];
     if (iv.openingRemarks && iv.openingRemarks.trim()) rows.push([iv.candidateName, '(opening remarks / other)', '', iv.openingRemarks, '', iv.submittedBy]);
@@ -1098,6 +1264,7 @@
     lines.push('');
     lines.push('SUMMARY');
     lines.push(iv.overallSummary || '—');
+    ratingText(iv.rating).forEach(function(l){ lines.push(l); });
     if (iv.openingRemarks && iv.openingRemarks.trim()){
       lines.push('');
       lines.push('OPENING REMARKS / OTHER');
@@ -1326,7 +1493,10 @@
      Dashboard
      ============================================================ */
   function renderDashboardHtml(){
-    var interviews = state.interviews.slice().sort(function(a,b){ return (b.submittedAt||0) - (a.submittedAt||0); });
+    var interviews = state.interviews.slice().sort(function(a,b){
+      if (dashSort === 'score') return ((b.rating && b.rating.total) || -1) - ((a.rating && a.rating.total) || -1);
+      return (b.submittedAt||0) - (a.submittedAt||0);
+    });
     var candidateCount = state.candidates.length;
     var interviewedNames = {};
     interviews.forEach(function(iv){ interviewedNames[iv.candidateName.trim().toLowerCase()] = true; });
@@ -1340,6 +1510,10 @@
         '<td>' + escapeHtml(iv.submittedBy || '—') + '</td>' +
         '<td class="mono">' + fmtDate(iv.submittedAt) + '</td>' +
         '<td><span class="pill ' + (fullyCovered ? 'pill-success' : 'pill-muted') + '">' + answered + ' / ' + state.questions.length + '</span></td>' +
+        '<td>' + (iv.rating ? '<strong class="mono">' + iv.rating.total + '</strong><span class="hint"> / ' + (iv.rating.max || RUBRIC_MAX) + '</span>' +
+          (iv.rating.track ? ' <span class="pill pill-muted">' + escapeHtml(iv.rating.track) + '</span>' : '') +
+          ratingFlags(iv.rating).map(function(f){ return ' <span class="pill flag-pill" title="' + escapeHtml(f) + '">⚑ ' + escapeHtml(f) + '</span>'; }).join('')
+          : '<span class="hint">—</span>') + '</td>' +
         '<td class="mono">' + fmtDuration(iv.durationSec) + '</td>' +
         '<td>' +
           '<div style="display:flex;gap:6px;flex-wrap:wrap;">' +
@@ -1370,9 +1544,14 @@
       '<div class="stat-card"><div class="num">' + state.questions.length + '</div><div class="label">Questions in bank</div></div>' +
     '</div>' +
     '<div class="card">' +
-      '<div class="card-head"><h3>Submitted interviews</h3></div>' +
-      '<div class="table-wrap"><table><thead><tr><th>Candidate</th><th>Submitted by</th><th>Submitted</th><th>Coverage</th><th>Length</th><th>Document</th></tr></thead><tbody>' +
-        (rows || '<tr class="empty-row"><td colspan="6">No interviews yet — start one from “New Interview.”</td></tr>') +
+      '<div class="card-head"><h3>Submitted interviews</h3>' +
+        '<div style="display:flex;gap:8px;flex-wrap:wrap;">' +
+          '<button class="btn btn-sm' + (dashSort === 'newest' ? ' btn-primary' : '') + '" data-action="sort-newest">Newest first</button>' +
+          '<button class="btn btn-sm' + (dashSort === 'score' ? ' btn-primary' : '') + '" data-action="sort-score">Highest score</button>' +
+          '<button class="btn btn-sm" data-action="export-scores">Copy scores (CSV)</button>' +
+        '</div></div>' +
+      '<div class="table-wrap"><table><thead><tr><th>Candidate</th><th>Submitted by</th><th>Submitted</th><th>Coverage</th><th>Score</th><th>Length</th><th>Document</th></tr></thead><tbody>' +
+        (rows || '<tr class="empty-row"><td colspan="7">No interviews yet — start one from “New Interview.”</td></tr>') +
       '</tbody></table></div>' +
     '</div>';
   }
@@ -1384,6 +1563,9 @@
       if (!btn) return;
       var action = btn.dataset.action;
       if (action === 'export-all') exportAllCsv();
+      else if (action === 'sort-newest'){ dashSort = 'newest'; renderView(); }
+      else if (action === 'sort-score'){ dashSort = 'score'; renderView(); }
+      else if (action === 'export-scores') exportScoresCsv();
       else if (action === 'view-doc'){
         var iv = state.interviews.find(function(x){ return x.id === btn.dataset.id; });
         if (iv) openDocModal(iv);
@@ -1416,6 +1598,7 @@
         '<div class="card-pad doc-preview">' +
           '<p class="hint" style="margin-bottom:16px;">Interviewed by ' + escapeHtml(iv.submittedBy||'—') + ' &middot; ' + fmtDate(iv.submittedAt) + ' &middot; ' + fmtDuration(iv.durationSec) + '</p>' +
           '<h4>Summary</h4><p style="margin-bottom:18px;line-height:1.6;white-space:pre-wrap;">' + escapeHtml(iv.overallSummary || '—') + '</p>' +
+          ratingHtml(iv.rating) +
           (iv.openingRemarks && iv.openingRemarks.trim() ? '<h4>Opening remarks / other</h4><p style="margin-bottom:18px;white-space:pre-wrap;">' + escapeHtml(iv.openingRemarks) + '</p>' : '') +
           qaHtml +
           '<div style="display:flex;gap:8px;margin-top:14px;">' +
@@ -1598,6 +1781,7 @@
   function renderNewInterviewHtml(){
     if (niStep === 'recording') return renderRecordingHtml();
     if (niStep === 'review') return renderReviewHtml();
+    if (niStep === 'rating') return renderRatingHtml();
     return renderSetupHtml();
   }
 
@@ -1654,6 +1838,7 @@
     if (niStep === 'setup') return wireSetup();
     if (niStep === 'recording') return wireRecording();
     if (niStep === 'review') return wireReview();
+    if (niStep === 'rating') return wireRating();
   }
 
   function wireSetup(){
@@ -1933,7 +2118,7 @@
   function finishSession(utterances, rawPastedText, precomputedDraft){
     var draft = precomputedDraft || runMatching(utterances, state.questions);
     var qa = draft.qa.map(function(q){
-      return { questionId: q.questionId, questionText: q.questionText, group: q.group || '', asked: q.asked, answerText: q.answerText, summary: summarize(q.answerText, 2) };
+      return { questionId: q.questionId, questionText: q.questionText, group: q.group || '', asked: q.asked, answerText: q.answerText, summary: summarizeFor(q.questionText, q.answerText) };
     });
     reviewDraft = {
       candidateName: setupPick.candidateName,
@@ -1947,6 +2132,131 @@
     };
     niStep = 'review';
     renderView();
+  }
+
+
+  /* ---------- Rating (Interview Evaluation rubric) ---------- */
+  function renderRatingHtml(){
+    var d = reviewDraft;
+    if (!d) return '<p class="hint">Nothing to rate yet.</p>';
+    var rt = d.rating || (d.rating = blankRating());
+    var rows = RUBRIC.map(function(r){
+      var cur = rt.scores[r.key] || { score:null, notes:'' };
+      var btns = '';
+      for (var n = 1; n <= 10; n++){
+        var band = n <= 3 ? 'low' : n <= 7 ? 'mid' : 'high';
+        btns += '<button type="button" class="score-btn band-' + band + (cur.score === n ? ' on' : '') + '" data-key="' + r.key + '" data-score="' + n + '" aria-pressed="' + (cur.score === n) + '">' + n + '</button>';
+      }
+      return '<div class="rubric-row' + (cur.score ? ' done' : '') + '" data-row="' + r.key + '">' +
+        '<div class="rubric-head"><div><div class="rubric-name">' + escapeHtml(r.name) + '</div><div class="rubric-criteria">' + escapeHtml(r.criteria) + '</div></div>' +
+          '<div class="rubric-score-now" id="now-' + r.key + '">' + (cur.score ? cur.score + '<span>/10</span>' : '—') + '</div></div>' +
+        '<div class="score-row" role="group" aria-label="' + escapeHtml(r.name) + ' score">' + btns + '</div>' +
+        '<div class="anchor-row"><span><b>1–3</b> ' + escapeHtml(r.low) + '</span><span><b>4–7</b> ' + escapeHtml(r.mid) + '</span><span><b>8–10</b> ' + escapeHtml(r.high) + '</span></div>' +
+        '<textarea class="rubric-notes" data-notes="' + r.key + '" rows="1" placeholder="Notes (optional)">' + escapeHtml(cur.notes || '') + '</textarea>' +
+      '</div>';
+    }).join('');
+    var tot = ratingTotal(rt);
+    var trackOpts = '<option value="">Choose…</option>' + TRACK_OPTIONS.map(function(t){ return '<option' + (rt.track === t ? ' selected' : '') + '>' + t + '</option>'; }).join('');
+    return '' +
+    '<button class="btn btn-sm" id="rt-back" style="margin-bottom:14px;">← Back to notes</button>' +
+    '<div class="view-head"><div><h2>Interview Evaluation <span class="pill pill-warning" style="vertical-align:middle;">Mandatory</span></h2>' +
+      '<p class="sub">Rate <strong>' + escapeHtml(d.candidateName) + '</strong> on each category — 1–3 weak, 4–7 solid, 8–10 exceptional. The guide under each row shows what each range looks like.</p></div></div>' +
+    '<div class="rubric-list">' + rows + '</div>' +
+    '<div class="card card-pad rubric-extra">' +
+      '<div class="field-group"><label>Did they have questions for us? <span style="color:var(--live);">*</span></label>' +
+        '<div class="yn-row">' +
+          '<button type="button" class="yn-btn' + (rt.askedQuestions === 'yes' ? ' on yes' : '') + '" data-yn="yes">Yes</button>' +
+          '<button type="button" class="yn-btn' + (rt.askedQuestions === 'no' ? ' on no' : '') + '" data-yn="no">No — red flag</button>' +
+        '</div></div>' +
+      '<div class="field-group"><label>Fund or Consulting?</label><select id="rt-track">' + trackOpts + '</select></div>' +
+      '<div class="field-group" style="margin-bottom:0;"><label>Red flags / concerns</label><textarea id="rt-redflags" rows="2" placeholder="Dealbreakers or anything the board should know — late, rude, can’t commit to meetings…">' + escapeHtml(rt.redFlags || '') + '</textarea></div>' +
+    '</div>' +
+    '<div class="rubric-footer">' +
+      '<div><div class="rubric-total" id="rt-total">' + tot.total + ' <span>/ ' + RUBRIC_MAX + '</span></div><div class="hint" id="rt-progress">' + tot.scored + ' of ' + RUBRIC.length + ' categories scored</div></div>' +
+      '<button class="btn btn-primary" id="rt-submit">Submit interview &amp; rating</button>' +
+    '</div>';
+  }
+
+  function wireRating(){
+    var root = document.getElementById('view-root');
+    var rt = reviewDraft.rating;
+    function refreshTotals(){
+      var t = ratingTotal(rt);
+      var el = document.getElementById('rt-total'); if (el) el.innerHTML = t.total + ' <span>/ ' + RUBRIC_MAX + '</span>';
+      var pr = document.getElementById('rt-progress'); if (pr) pr.textContent = t.scored + ' of ' + RUBRIC.length + ' categories scored';
+    }
+    root.querySelectorAll('textarea.rubric-notes, #rt-redflags').forEach(autosizeQ);
+    root.addEventListener('click', function(e){
+      var sb = e.target.closest('.score-btn');
+      if (sb){
+        var key = sb.dataset.key, n = parseInt(sb.dataset.score, 10);
+        rt.scores[key].score = n;
+        var row = root.querySelector('.rubric-row[data-row="' + key + '"]');
+        row.querySelectorAll('.score-btn').forEach(function(b){ var on = parseInt(b.dataset.score,10) === n; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on); });
+        row.classList.add('done'); row.classList.remove('missing');
+        document.getElementById('now-' + key).innerHTML = n + '<span>/10</span>';
+        refreshTotals();
+        return;
+      }
+      var yn = e.target.closest('.yn-btn');
+      if (yn){
+        rt.askedQuestions = yn.dataset.yn;
+        root.querySelectorAll('.yn-btn').forEach(function(b){ b.classList.remove('on', 'yes', 'no'); });
+        yn.classList.add('on', rt.askedQuestions);
+        root.querySelector('.yn-row').classList.remove('missing');
+      }
+    });
+    root.addEventListener('input', function(e){
+      var t = e.target;
+      if (t.dataset && t.dataset.notes){ rt.scores[t.dataset.notes].notes = t.value; autosizeQ(t); }
+      else if (t.id === 'rt-redflags'){ rt.redFlags = t.value; autosizeQ(t); }
+    });
+    root.addEventListener('change', function(e){ if (e.target.id === 'rt-track') rt.track = e.target.value; });
+    document.getElementById('rt-back').addEventListener('click', function(){ niStep = 'review'; renderView(); window.scrollTo(0, 0); });
+    document.getElementById('rt-submit').addEventListener('click', function(){
+      var missing = RUBRIC.filter(function(r){ return !rt.scores[r.key].score; });
+      missing.forEach(function(r){ root.querySelector('.rubric-row[data-row="' + r.key + '"]').classList.add('missing'); });
+      if (!rt.askedQuestions) root.querySelector('.yn-row').classList.add('missing');
+      if (missing.length){
+        toast('Score every category first — missing: ' + missing.map(function(r){ return r.name; }).join(', ') + '.', 'warn');
+        root.querySelector('.rubric-row.missing').scrollIntoView({ behavior:'smooth', block:'center' });
+        return;
+      }
+      if (!rt.askedQuestions){ toast('Answer “Did they have questions for us?” first.', 'warn'); root.querySelector('.yn-row').scrollIntoView({ behavior:'smooth', block:'center' }); return; }
+      submitInterviewWithRating(this);
+    });
+  }
+
+  function submitInterviewWithRating(submitBtn){
+    var d = reviewDraft;
+    var rt = d.rating;
+    var t = ratingTotal(rt);
+    var interview = {
+      id: uid('int'),
+      candidateName: d.candidateName.trim(),
+      submittedBy: d.submittedBy.trim(),
+      startedAt: d.startedAt,
+      endedAt: d.endedAt,
+      durationSec: Math.round(((d.endedAt||Date.now()) - (d.startedAt||Date.now()))/1000),
+      openingRemarks: d.opening || '',
+      qa: d.qa.map(function(q){ var c = Object.assign({}, q); delete c.summaryEdited; return c; }),
+      overallSummary: d.overallSummary || '',
+      rawTranscript: d.rawTranscript || '',
+      rating: {
+        scores: deepClone(rt.scores), askedQuestions: rt.askedQuestions, track: rt.track || '', redFlags: (rt.redFlags || '').trim(),
+        total: t.total, max: RUBRIC_MAX, ratedBy: d.submittedBy.trim(), ratedAt: Date.now()
+      },
+      submittedAt: Date.now()
+    };
+    var ns = deepClone(state);
+    ns.interviews.push(interview);
+    submitBtn.disabled = true;
+    publishState(ns, 'Interview & rating for ' + interview.candidateName + ' submitted').then(function(){
+      recSession = null; reviewDraft = null; niStep = 'setup';
+      setupPick = { candidateName:'', submittedBy: interview.submittedBy, useCustomName:false };
+      currentView = 'dashboard';
+      renderView();
+    });
   }
 
   /* ---------- Review ---------- */
@@ -1985,7 +2295,7 @@
       '<div style="display:flex;gap:8px;">' +
         '<button class="btn btn-danger" id="rv-discard">Discard</button>' +
       '</div>' +
-      '<button class="btn btn-primary" id="rv-submit">Submit interview</button>' +
+      '<button class="btn btn-primary" id="rv-submit">Next: rate candidate →</button>' +
     '</div>';
   }
 
@@ -2031,28 +2341,10 @@
     if (submitBtn) submitBtn.addEventListener('click', function(){
       if (!reviewDraft.candidateName.trim()){ toast('Candidate name can’t be empty.', 'warn'); return; }
       if (!reviewDraft.submittedBy.trim()){ toast('Choose who’s submitting this interview.', 'warn'); return; }
-      var interview = {
-        id: uid('int'),
-        candidateName: reviewDraft.candidateName.trim(),
-        submittedBy: reviewDraft.submittedBy.trim(),
-        startedAt: reviewDraft.startedAt,
-        endedAt: reviewDraft.endedAt,
-        durationSec: Math.round(((reviewDraft.endedAt||Date.now()) - (reviewDraft.startedAt||Date.now()))/1000),
-        openingRemarks: reviewDraft.opening || '',
-        qa: reviewDraft.qa.map(function(q){ var c = Object.assign({}, q); delete c.summaryEdited; return c; }),
-        overallSummary: reviewDraft.overallSummary || '',
-        rawTranscript: reviewDraft.rawTranscript || '',
-        submittedAt: Date.now()
-      };
-      var ns = deepClone(state);
-      ns.interviews.push(interview);
-      submitBtn.disabled = true;
-      publishState(ns, 'Interview for ' + interview.candidateName + ' submitted').then(function(){
-        recSession = null; reviewDraft = null; niStep = 'setup';
-        setupPick = { candidateName:'', submittedBy: interview.submittedBy, useCustomName:false };
-        currentView = 'dashboard';
-        renderView();
-      });
+      if (!reviewDraft.rating) reviewDraft.rating = blankRating();
+      niStep = 'rating';
+      renderView();
+      window.scrollTo(0, 0);
     });
   }
 
