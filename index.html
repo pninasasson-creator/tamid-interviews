@@ -214,6 +214,7 @@
   th{ color:var(--text-muted); font-weight:600; font-size:12px; text-transform:uppercase; letter-spacing:.04em; white-space:nowrap; }
   tr:last-child td{ border-bottom:none; }
   td input, td textarea{ width:100%; padding:6px 8px; border:1px solid transparent; border-radius:6px; background:transparent; }
+  td textarea.q-edit{ resize:none; overflow:hidden; min-height:38px; line-height:1.45; white-space:pre-wrap; word-wrap:break-word; }
   td input:hover, td textarea:hover, td input:focus, td textarea:focus{ border-color:var(--border); background:var(--bg); }
   .empty-row td{ color:var(--text-muted); font-style:italic; text-align:center; padding:26px; }
 
@@ -254,7 +255,8 @@
   .rec-dot{ width:11px; height:11px; border-radius:50%; background:var(--live); animation:pulse 1s ease-in-out infinite; }
   .rec-timer{ font-family:'IBM Plex Mono',monospace; font-size:20px; font-weight:500; }
   .q-rail{ display:flex; flex-direction:column; gap:8px; }
-  .q-rail-item{ display:flex; align-items:flex-start; gap:10px; padding:10px 12px; border-radius:9px; background:var(--surface); border:1px solid var(--border); font-size:13px; }
+  .q-rail-item{ display:flex; align-items:flex-start; gap:10px; padding:10px 12px; border-radius:9px; background:var(--surface); border:1px solid var(--border); font-size:13px; cursor:pointer; transition:border-color .15s; }
+  .q-rail-item:hover{ border-color:var(--accent); }
   .q-rail-item.current{ border-color:var(--live); background:var(--live-soft); }
   .q-rail-item.done{ border-color:var(--success); background:var(--success-soft); }
   .q-dot{
@@ -350,9 +352,9 @@
   /* ============================================================
      Text matching: turns a stream of spoken utterances into
      question / answer segments by comparing each utterance
-     against the question bank's significant words. No network
-     call and no ML model is available inside this page, so this
-     is a deliberately transparent heuristic, not true AI — the
+     against the question bank by meaning-ish word matching (see
+     below). No network call or AI model is used, so this is a
+     transparent heuristic — the
      review screen lets a human fix any mis-assigned line before
      it's saved.
      ============================================================ */
@@ -380,58 +382,213 @@
   function contentTokens(str){
     return normalize(str).split(' ').filter(function(w){ return w.length > 1 && !STOPWORDS[w]; });
   }
-  function scoreMatch(uTokens, qTokenSet, qTokenCount){
-    if (!qTokenCount) return 0;
-    var hit = 0;
-    for (var i=0;i<uTokens.length;i++){ if (qTokenSet[uTokens[i]]) hit++; }
-    // recall against the question's own words (interviewer reads the question, so
-    // most of its content words should show up in the utterance)
-    var qHits = 0;
-    var seen = {};
-    for (var j=0;j<uTokens.length;j++){ if (qTokenSet[uTokens[j]] && !seen[uTokens[j]]) { seen[uTokens[j]]=true; qHits++; } }
-    return qHits / qTokenCount;
+  /* ---- Smarter matching: word stems + synonyms + interview flow ----
+     The interviewer rarely reads a question word-for-word, so instead of
+     requiring the exact words this:
+       1. reduces words to their stem (joining/joined -> join),
+       2. maps related words onto one idea (struggle / challenge / obstacle
+          / hard time all count as the same thing),
+       3. forgives small mis-hearings from the speech engine,
+       4. weights words that are unique to one question more heavily,
+       5. expects questions roughly in bank order — the NEXT question only
+          needs a light match, especially when the line sounds like a
+          question ("what", "tell us", "how would you"…) or follows a
+          transition ("moving on", "next question"),
+       6. makes it hard for a candidate's answer to accidentally jump the
+          app back to a question that was already asked.
+     If a real paraphrase still gets missed, add its words to a group in
+     SYNONYM_GROUPS below. */
+  var SYNONYM_GROUPS = [
+    ['join','apply','applicant','member','membership','recruit','recruitment','rush'],
+    ['interest','want','excite','draw','drawn','attract','appeal','motivate','motivation','reason','choose','chose','pick'],
+    ['tamid','club','organization','org','group’s'],
+    ['strength','strong','good','best','excel','skill','asset','superpower'],
+    ['weakness','weak','improve','improvement','worst','flaw','grow','growth'],
+    ['challenge','struggle','difficult','difficulty','hard','obstacle','adversity','setback','problem','tough','overcome','overcame','fail','failure','conflict'],
+    ['group','team','teamwork','collaborate','collaboration','together','teammate'],
+    ['role','position','part','usually','typically','naturally'],
+    ['example','instance','experience','story','moment','situation'],
+    ['prioritize','priority','commit','commitment','balance','involve','involvement','engage','dedicate','dedication','stay','remain','manage'],
+    ['college','school','university','tulane','semester','year','campus'],
+    ['restaurant','food','dish','eatery','cafe','menu','meal','cuisine'],
+    ['meet','meeting'],
+    ['monday','mondays','weekly','530','five','thirty'],
+    ['available','availability','make','attend','free','schedule'],
+    ['question','ask','anything','wonder','curious'],
+    ['yourself','introduce','introduction','background','bit','little','self'],
+    ['proud','pride','accomplish','accomplishment','achievement','achieve'],
+    ['resume','cv'],
+    ['friend','peer','roommate','others','people'],
+    ['describe','description','characterize','word','adjective'],
+    ['orleans','nola','louisiana'],
+    ['fit','belong','match','bring','contribute','offer','add','value']
+  ];
+  // Extra filler words that carry no meaning for matching.
+  ['us','me','my','any','some','lot','give','tell','say','think','would','one','two','three','kind','thing','something','maybe','mean','know','well','actually','basically'].forEach(function(w){ STOPWORDS[w] = true; });
+
+  function stem(w){
+    if (w.length <= 4) return w;
+    if (/ies$/.test(w)) return w.slice(0,-3) + 'y';
+    if (/(ss|us|is)$/.test(w)) return w;
+    if (/ing$/.test(w) && w.length > 5) { w = w.slice(0,-3); }
+    else if (/ed$/.test(w) && w.length > 5) { w = w.slice(0,-2); }
+    else if (/(sh|ch|x|z|ss)es$/.test(w)) { w = w.slice(0,-2); }
+    else if (/s$/.test(w)) { w = w.slice(0,-1); }
+    if (/(.)\1$/.test(w) && !/(ll|ss)$/.test(w)) w = w.slice(0,-1); // running -> runn -> run
+    if (/(at|iz|bl)$/.test(w)) w = w + 'e';                          // motivat -> motivate
+    return w;
+  }
+  var CANON = {};
+  SYNONYM_GROUPS.forEach(function(g){
+    var head = stem(g[0]);
+    g.forEach(function(w){ CANON[w] = head; CANON[stem(w)] = head; });
+  });
+  function canon(w){ return CANON[w] || CANON[stem(w)] || stem(w); }
+  function conceptTokens(str){
+    var out = [], seen = {};
+    contentTokens(str).forEach(function(w){ var c = canon(w); if (!seen[c]){ seen[c] = true; out.push(c); } });
+    return out;
+  }
+  function editDistanceAtMost1(a, b){
+    if (a === b) return true;
+    var la = a.length, lb = b.length;
+    if (Math.abs(la - lb) > 1) return false;
+    var i = 0, j = 0, edits = 0;
+    while (i < la && j < lb){
+      if (a[i] === b[j]){ i++; j++; continue; }
+      if (++edits > 1) return false;
+      if (la > lb) i++; else if (lb > la) j++; else { i++; j++; }
+    }
+    return edits + (la - i) + (lb - j) <= 1;
+  }
+  function tokenHit(qTok, uSet, uList){
+    if (uSet[qTok]) return true;
+    if (qTok.length < 5) return false;
+    for (var k = 0; k < uList.length; k++){
+      var u = uList[k];
+      if (u.length >= 5 && (u.slice(0,5) === qTok.slice(0,5) || editDistanceAtMost1(u, qTok))) return true;
+    }
+    return false;
+  }
+  var QUESTION_OPENER = /^(so |and |okay |ok |alright |great |awesome |cool |now |next |then )*(what|why|how|when|where|which|who|tell|can you|could you|would you|will you|do you|did you|are you|have you|is there|describe|give|walk|share|talk|explain|if you|say you|imagine|let'?s say)\b/;
+  var QUESTION_PHRASE = /\b(love to (hear|know)|like to (hear|know)|want to (hear|know)|curious|wondering|walk us through|tell us|tell me|what about|how about|how would|what would|why would|why do|why did|what do|what did|what made|what makes|what are|what is|how do|how did|how are|how will|are you|do you|can you|could you|would you)\b/;
+  var TRANSITION_CUE = /\b(next question|move on|moving on|let'?s move|switch(ing)? gears|next one|our next|next up|another question|last question|final question|one more question|to wrap up|before we (finish|wrap)|going forward|on to the next)\b/;
+
+  function buildQuestionModel(questions){
+    var qs = questions.map(function(q){
+      // two-part questions ("What role…? Can you give an example…?") can be
+      // matched by either part on its own, as well as the whole thing
+      var parts = (q.text.match(/[^?.!]+[?.!]*/g) || [q.text]).map(conceptTokens).filter(function(p){ return p.length; });
+      var whole = conceptTokens(q.text);
+      if (parts.length > 1) parts.unshift(whole); else parts = [whole];
+      return { q:q, toks: whole, parts: parts };
+    });
+    var df = {};
+    qs.forEach(function(x){ x.toks.forEach(function(t){ df[t] = (df[t] || 0) + 1; }); });
+    qs.forEach(function(x){ x.w = {}; x.toks.forEach(function(t){ x.w[t] = 1 / df[t]; }); });
+    return qs;
+  }
+  function scorePart(uToks, uSet, toks, w){
+    var total = 0, got = 0, hits = 0;
+    toks.forEach(function(t){ total += w[t]; if (tokenHit(t, uSet, uToks)){ got += w[t]; hits++; } });
+    if (!total) return 0;
+    // a single matched word shouldn't be enough on a multi-idea question
+    if (hits < 2 && toks.length >= 3) return Math.min(got / total, 0.34);
+    return got / total;
+  }
+  function scoreUtterance(uToks, qm){
+    var uSet = {}; uToks.forEach(function(t){ uSet[t] = true; });
+    var best = 0;
+    qm.parts.forEach(function(p, pi){
+      var sc = scorePart(uToks, uSet, p, qm.w);
+      if (pi > 0 || qm.parts.length === 1) best = Math.max(best, pi > 0 ? sc * 0.9 : sc); else best = Math.max(best, sc);
+    });
+    return best;
   }
 
-  function runMatching(utterances, questions){
-    var qState = questions.map(function(q){
-      var tokens = contentTokens(q.text);
-      var set = {};
-      tokens.forEach(function(t){ set[t] = true; });
-      return { q:q, tokens:tokens, set:set, asked:false, buffer:[] };
-    });
+  // jumps: optional [{at: utteranceIndex, questionId}] — manual "next
+  // question" / click-to-jump overrides from the recording screen.
+  function runMatching(utterances, questions, jumps){
+    jumps = jumps || [];
+    var model = buildQuestionModel(questions);
+    var qState = model.map(function(m){ return { q:m.q, m:m, asked:false, buffer:[] }; });
+    var idxById = {}; qState.forEach(function(x, i){ idxById[x.q.id] = i; });
     var opening = [];
     var current = -1;
-    utterances.forEach(function(u){
-      var uTokens = contentTokens(u);
-      var best = -1, bestScore = 0;
-      qState.forEach(function(qs, i){
-        if (qs.tokens.length < 2) return;
-        var s = scoreMatch(uTokens, qs.set, qs.tokens.length);
-        if (s > bestScore){ bestScore = s; best = i; }
+    var cueWindow = 0;
+    var prevToks = null, prevQuestionLike = false;
+
+    function isSatisfied(i){
+      var x = qState[i];
+      if (x.asked) return true;
+      return !!(x.q.group && qState.some(function(o){ return o.q.group === x.q.group && o.asked; }));
+    }
+    // "Expected next": the next unasked question after the current one,
+    // and also the earliest unasked one (interviewers who jump ahead
+    // usually come back to where they left off).
+    function expectedSet(){
+      var e = {};
+      for (var k = current + 1; k < qState.length; k++) if (!isSatisfied(k)){ e[k] = true; break; }
+      for (var k2 = 0; k2 < qState.length; k2++) if (!isSatisfied(k2)){ e[k2] = true; break; }
+      return e;
+    }
+
+    utterances.forEach(function(u, ui){
+      jumps.forEach(function(j){
+        if (j.at === ui && idxById.hasOwnProperty(j.questionId)){ current = idxById[j.questionId]; qState[current].asked = true; cueWindow = 0; }
       });
-      if (best >= 0 && bestScore >= 0.5){
+      var norm = normalize(u);
+      var questionLike = QUESTION_OPENER.test(norm) || QUESTION_PHRASE.test(norm) || /\?\s*$/.test(u);
+      if (TRANSITION_CUE.test(norm)) cueWindow = 3;
+      var uToks = conceptTokens(norm.replace(new RegExp(TRANSITION_CUE.source, 'g'), ' '));
+      var joined = prevToks ? prevToks.concat(uToks) : null;
+      var expected = expectedSet();
+
+      var best = -1, bestMargin = -1;
+      qState.forEach(function(x, i){
+        if (i === current) return;
+        var sc = scoreUtterance(uToks, x.m);
+        // a question often gets split over two lines ("so what are your" /
+        // "strengths and weaknesses"), so the line before counts too
+        var ql = questionLike || prevQuestionLike;
+        if (joined) sc = Math.max(sc, scoreUtterance(joined, x.m) * 0.9);
+        var T;
+        if (x.asked) T = ql ? 0.7 : 0.85;                                  // going back: needs a strong match
+        else if (expected[i]) T = cueWindow ? 0.2 : (ql ? 0.3 : 0.65);
+        else T = (ql ? 0.42 : 0.75) - (cueWindow ? 0.07 : 0);
+        var margin = sc - T;
+        if (sc > 0 && margin >= 0 && margin > bestMargin){ bestMargin = margin; best = i; }
+      });
+
+      if (best >= 0){
         current = best;
         qState[best].asked = true;
-      } else if (current >= 0){
-        qState[current].buffer.push(u);
+        cueWindow = 0;
+        prevToks = null; prevQuestionLike = false;
       } else {
-        opening.push(u);
+        if (current >= 0) qState[current].buffer.push(u);
+        else opening.push(u);
+        if (cueWindow) cueWindow--;
+        prevToks = uToks; prevQuestionLike = questionLike;
       }
+    });
+    // a manual jump made after the last line still sets the current question
+    jumps.forEach(function(j){
+      if (j.at >= utterances.length && idxById.hasOwnProperty(j.questionId)){ current = idxById[j.questionId]; qState[current].asked = true; }
     });
     return {
       opening: opening.join(' '),
       currentQuestionId: current >= 0 ? qState[current].q.id : null,
       qa: qState.map(function(qs){
-        return { questionId: qs.q.id, questionText: qs.q.text, optional: !!qs.q.optional, group: qs.q.group || '', asked: qs.asked, answerText: qs.buffer.join(' ') };
+        return { questionId: qs.q.id, questionText: qs.q.text, group: qs.q.group || '', asked: qs.asked, answerText: qs.buffer.join(' ') };
       })
     };
   }
 
-  // Coverage accounting that understands both "optional" (fine if skipped,
-  // doesn't count against coverage at all) and "choose one of a group"
+  // Coverage accounting that understands "choose one of a group"
   // (a group of questions — same non-blank `group` string — counts as ONE
   // required unit, satisfied as soon as ANY member of the group was asked).
-  // Works on any array of {optional, group, asked} objects (qa entries).
+  // Works on any array of {group, asked} objects (qa entries).
   function groupCoverage(qaList){
     var requiredTotal = 0, requiredSatisfied = 0;
     var seenGroups = {};
@@ -442,7 +599,7 @@
         requiredTotal++;
         var anyAsked = qaList.some(function(o){ return o.group === q.group && o.asked; });
         if (anyAsked) requiredSatisfied++;
-      } else if (!q.optional){
+      } else {
         requiredTotal++;
         if (q.asked) requiredSatisfied++;
       }
@@ -454,7 +611,6 @@
   // soften/adjust the review-screen and doc-view flags.
   function questionSkipOk(q, qaList){
     if (q.asked) return null;
-    if (q.optional) return 'optional';
     if (q.group && qaList.some(function(o){ return o.group === q.group && o.asked; })) return 'group-covered';
     return null;
   }
@@ -797,17 +953,14 @@
     if (!found){ toast('Couldn’t find a question column in that file.', 'error'); return; }
     var header = found.rows[found.hi];
     var iText = colIndex(header, ['question text','question']);
-    var iOptional = colIndex(header, ['optional']);
     var iGroup = colIndex(header, ['group','choose one','set']);
     var out = [];
     for (var r=found.hi+1; r<found.rows.length; r++){
       var row = found.rows[r];
       var text = iText!==-1 ? String(row[iText]||'').trim() : '';
       if (!text) continue;
-      var optVal = iOptional!==-1 ? String(row[iOptional]||'').trim().toLowerCase() : '';
-      var optional = optVal === 'yes' || optVal === 'y' || optVal === 'true' || optVal === '1' || optVal === 'optional';
       var group = iGroup!==-1 ? String(row[iGroup]||'').trim() : '';
-      out.push({ id: uid('q'), number: out.length+1, text: text, optional: optional, group: group });
+      out.push({ id: uid('q'), number: out.length+1, text: text, group: group });
     }
     if (!out.length){ toast('No question rows found under that header.', 'error'); return; }
     draftQuestions = out;
@@ -1016,8 +1169,7 @@
     var qaHtml = iv.qa.filter(function(q){ return q.asked || q.answerText.trim(); }).map(function(qa){
       var skipOk = questionSkipOk(qa, iv.qa);
       var flagText = qa.asked ? '' :
-        (skipOk === 'optional' ? ' <span class="not-asked-flag" style="color:var(--text-muted);">optional — OK if skipped</span>' :
-         skipOk === 'group-covered' ? ' <span class="not-asked-flag" style="color:var(--text-muted);">not needed — another question in this set was covered</span>' :
+        (skipOk === 'group-covered' ? ' <span class="not-asked-flag" style="color:var(--text-muted);">not needed — another question in this set was covered</span>' :
          ' <span class="not-asked-flag">not confidently detected</span>');
       return '<div class="qa-card" style="cursor:default;">' +
         '<div class="q-text">' + escapeHtml(qa.questionText) + flagText + '</div>' +
@@ -1052,7 +1204,7 @@
   function ensureDrafts(){
     if (!draftCandidates) draftCandidates = deepClone(state.candidates);
     if (!draftQuestions) draftQuestions = deepClone(state.questions).map(function(q){
-      if (q.optional === undefined) q.optional = false;
+      delete q.optional;
       if (q.group === undefined) q.group = '';
       return q;
     });
@@ -1075,8 +1227,7 @@
     var qRows = draftQuestions.map(function(q, i){
       return '<tr>' +
         '<td class="mono" style="width:36px;">' + (i+1) + '</td>' +
-        '<td><textarea data-field="text" data-i="' + i + '" rows="1" style="min-height:38px;">' + escapeHtml(q.text) + '</textarea></td>' +
-        '<td style="text-align:center;"><input type="checkbox" data-field="optional" data-i="' + i + '" data-action="toggle-optional" ' + (q.optional ? 'checked' : '') + ' title="Optional — OK if this one isn’t asked"></td>' +
+        '<td><textarea class="q-edit" data-field="text" data-i="' + i + '" rows="1">' + escapeHtml(q.text) + '</textarea></td>' +
         '<td><input type="text" data-field="group" data-i="' + i + '" value="' + escapeHtml(q.group || '') + '" placeholder="e.g. A" style="width:70px;" title="Give two or more questions the same label to make them a “choose one” set — only one of them needs to be asked."></td>' +
         '<td><div style="display:flex;gap:4px;">' +
           '<button class="btn btn-sm" data-action="q-up" data-i="' + i + '" ' + (i===0?'disabled':'') + ' title="Move up">↑</button>' +
@@ -1126,19 +1277,26 @@
           '</div>' +
         '</div>' +
         '<p class="hint" style="margin-bottom:10px;">Tip: to mark two (or more) questions as a “choose one” set — only one needs to get asked — give them the same text in the Group column, e.g. type <strong>A</strong> in both. Leave Group blank for questions that always need to be asked.</p>' +
-        '<div class="table-wrap"><table><thead><tr><th>#</th><th>Question text</th><th>Optional</th><th>Group</th><th></th></tr></thead><tbody>' +
-          (qRows || '<tr class="empty-row"><td colspan="5">No questions yet — upload your list or add one manually.</td></tr>') +
+        '<div class="table-wrap"><table><thead><tr><th>#</th><th style="width:100%;">Question text</th><th>Group</th><th></th></tr></thead><tbody>' +
+          (qRows || '<tr class="empty-row"><td colspan="4">No questions yet — upload your list or add one manually.</td></tr>') +
         '</tbody></table></div>' +
       '</div>' +
     '</div>';
   }
 
+  function autosizeQ(el){ el.style.height = 'auto'; el.style.height = (el.scrollHeight + 2) + 'px'; }
+
   function wireManage(){
     var root = document.getElementById('view-root');
+    root.querySelectorAll('textarea.q-edit').forEach(autosizeQ);
+    if (!window.__qResizeBound){
+      window.__qResizeBound = true;
+      window.addEventListener('resize', function(){ document.querySelectorAll('textarea.q-edit').forEach(autosizeQ); });
+    }
 
     root.addEventListener('input', function(e){
       var t = e.target;
-      if (t.type === 'checkbox') return; // handled by the 'change' listener below
+      if (t.classList && t.classList.contains('q-edit')) autosizeQ(t);
       if (t.dataset && t.dataset.field !== undefined && t.dataset.i !== undefined){
         var i = parseInt(t.dataset.i, 10);
         if (root.contains(document.getElementById('tab-candidates')) && draftCandidates[i] && (t.dataset.field in draftCandidates[i])){
@@ -1147,13 +1305,6 @@
           draftQuestions[i][t.dataset.field] = t.value;
         }
       }
-    });
-
-    root.addEventListener('change', function(e){
-      var t = e.target;
-      if (t.type !== 'checkbox' || t.dataset.action !== 'toggle-optional') return;
-      var i = parseInt(t.dataset.i, 10);
-      if (draftQuestions[i]) draftQuestions[i].optional = t.checked;
     });
 
     root.addEventListener('click', function(e){
@@ -1173,7 +1324,7 @@
       }
       else if (action === 'del-candidate'){ draftCandidates.splice(i,1); renderView(); }
       else if (action === 'add-question'){
-        draftQuestions.push({ id: uid('q'), number: draftQuestions.length+1, text:'', optional: false, group: '' });
+        draftQuestions.push({ id: uid('q'), number: draftQuestions.length+1, text:'', group: '' });
         renderView();
       }
       else if (action === 'del-question'){ draftQuestions.splice(i,1); renderView(); }
@@ -1222,7 +1373,7 @@
       return '<option value="' + escapeHtml(c.name) + '">' + escapeHtml(c.name) + (c.timeSlot ? ' — ' + escapeHtml(c.timeSlot) : '') + '</option>';
     }).join('');
     var qList = state.questions.map(function(q,i){
-      return '<li><span class="qnum">' + (i+1) + '</span><span>' + escapeHtml(q.text) + (q.optional ? ' <span class="pill pill-muted">Optional</span>' : '') + (q.group ? ' <span class="pill pill-muted" title="Only one question in this set needs to be asked">Choose one</span>' : '') + '</span></li>';
+      return '<li><span class="qnum">' + (i+1) + '</span><span>' + escapeHtml(q.text) + (q.group ? ' <span class="pill pill-muted" title="Only one question in this set needs to be asked">Choose one</span>' : '') + '</span></li>';
     }).join('');
     var srSupported = !!(window.SpeechRecognition || window.webkitSpeechRecognition);
 
@@ -1304,7 +1455,7 @@
   function renderRecordingHtml(){
     var srSupported = !!(window.SpeechRecognition || window.webkitSpeechRecognition);
     var qItems = state.questions.map(function(q, i){
-      return '<div class="q-rail-item" data-qid="' + q.id + '"><span class="q-dot"></span><span>' + escapeHtml(q.text) + (q.optional ? ' <span class="pill pill-muted" style="font-size:10.5px;">Optional</span>' : '') + (q.group ? ' <span class="pill pill-muted" style="font-size:10.5px;" title="Only one question in this set needs to be asked">Choose one</span>' : '') + '</span></div>';
+      return '<div class="q-rail-item" data-qid="' + q.id + '"><span class="q-dot"></span><span>' + escapeHtml(q.text) + (q.group ? ' <span class="pill pill-muted" style="font-size:10.5px;" title="Only one question in this set needs to be asked">Choose one</span>' : '') + '</span></div>';
     }).join('');
 
     if (!srSupported || forcePasteMode){
@@ -1323,13 +1474,14 @@
       '<div class="rec-status"><button class="btn btn-sm" id="back-to-setup" style="margin-right:10px;">← Back</button><span class="rec-dot"></span><strong>' + escapeHtml(setupPick.candidateName) + '</strong><span class="hint" id="mic-status">starting microphone…</span></div>' +
       '<div style="display:flex;align-items:center;gap:16px;">' +
         '<span class="rec-timer" id="rec-timer">0:00</span>' +
+        '<button class="btn" id="next-q-btn" title="Move on to the next question (shortcut: → arrow key)">Next question →</button>' +
         '<button class="btn btn-live" id="stop-btn">Stop &amp; review</button>' +
       '</div>' +
     '</div>' +
     '<div class="rec-layout">' +
-      '<div class="q-rail" id="q-rail">' + qItems + '</div>' +
+      '<div><p class="hint" style="margin:0 0 8px;">Click a question to jump to it if the app misses one.</p><div class="q-rail" id="q-rail">' + qItems + '</div></div>' +
       '<div>' +
-        '<div class="transcript-panel" id="transcript-panel"><p class="hint">Listening… speak naturally, questions are detected automatically as you read them.</p></div>' +
+        '<div class="transcript-panel" id="transcript-panel"><p class="hint">Listening… speak naturally, questions are detected automatically as you ask them (no need to read them word-for-word).</p></div>' +
         '<div class="rec-footer"><span class="hint">The app matches what’s said against your question bank — double-check on the next screen before submitting.</span>' +
         '<button class="btn btn-sm" id="switch-to-paste">Not working? Switch to paste transcript</button></div>' +
       '</div>' +
@@ -1359,6 +1511,21 @@
       return;
     }
     document.getElementById('stop-btn').addEventListener('click', stopRecording);
+    document.getElementById('next-q-btn').addEventListener('click', skipToNextQuestion);
+    document.getElementById('q-rail').addEventListener('click', function(e){
+      var item = e.target.closest('.q-rail-item');
+      if (item) jumpToQuestion(item.dataset.qid);
+    });
+    if (!window.__nextQKeyBound){
+      window.__nextQKeyBound = true;
+      document.addEventListener('keydown', function(e){
+        if (e.key !== 'ArrowRight' || niStep !== 'recording' || !recSession || !document.getElementById('next-q-btn')) return;
+        var tag = (document.activeElement && document.activeElement.tagName) || '';
+        if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+        e.preventDefault();
+        skipToNextQuestion();
+      });
+    }
     var switchBtn = document.getElementById('switch-to-paste');
     if (switchBtn) switchBtn.addEventListener('click', function(){
       if (recSession){ recSession.shouldRestart = false; if (recSession.recognition){ try { recSession.recognition.stop(); } catch(e){} } stopTimer(); }
@@ -1393,7 +1560,7 @@
   }
 
   function startRecording(){
-    recSession = { startedAt: Date.now(), utterances: [], recognition: null, shouldRestart: false, timerHandle: null };
+    recSession = { startedAt: Date.now(), utterances: [], jumps: [], recognition: null, shouldRestart: false, timerHandle: null };
     startTimer();
 
     var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -1467,10 +1634,28 @@
 
   function onFinalUtterance(text){
     recSession.utterances.push(text);
-    var draft = runMatching(recSession.utterances, state.questions);
+    var draft = runMatching(recSession.utterances, state.questions, recSession.jumps);
     recSession.draft = draft;
     updateQRail(draft);
     renderTranscript('');
+  }
+
+  // Manual override: everything said from now on belongs to this question
+  // (auto-detection keeps running afterwards).
+  function jumpToQuestion(qid){
+    if (!recSession || !qid) return;
+    recSession.jumps.push({ at: recSession.utterances.length, questionId: qid });
+    recSession.draft = runMatching(recSession.utterances, state.questions, recSession.jumps);
+    updateQRail(recSession.draft);
+  }
+  function skipToNextQuestion(){
+    if (!recSession) return;
+    var draft = recSession.draft || runMatching(recSession.utterances, state.questions, recSession.jumps);
+    var qs = state.questions;
+    var cur = -1;
+    qs.forEach(function(q, i){ if (q.id === draft.currentQuestionId) cur = i; });
+    if (cur >= qs.length - 1){ toast('That’s the last question — press Stop & review when you’re done.'); return; }
+    jumpToQuestion(qs[cur + 1].id);
   }
 
   function updateQRail(draft){
@@ -1497,7 +1682,7 @@
     var panel = document.getElementById('transcript-panel');
     if (!panel || !recSession) return;
     var lines = recSession.utterances.map(function(u){ return '<div class="transcript-line">' + escapeHtml(u) + '</div>'; }).join('');
-    panel.innerHTML = (lines || '<p class="hint">Listening… speak naturally, questions are detected automatically as you read them.</p>') +
+    panel.innerHTML = (lines || '<p class="hint">Listening… speak naturally, questions are detected automatically as you ask them (no need to read them word-for-word).</p>') +
       (interim ? '<div class="transcript-line transcript-interim">' + escapeHtml(interim) + '</div>' : '');
     panel.scrollTop = panel.scrollHeight;
   }
@@ -1508,14 +1693,14 @@
     if (recSession.recognition){ try { recSession.recognition.stop(); } catch(e){} }
     stopTimer();
     recSession.endedAt = Date.now();
-    var draft = runMatching(recSession.utterances, state.questions);
+    var draft = runMatching(recSession.utterances, state.questions, recSession.jumps);
     finishSession(recSession.utterances, null, draft);
   }
 
   function finishSession(utterances, rawPastedText, precomputedDraft){
     var draft = precomputedDraft || runMatching(utterances, state.questions);
     var qa = draft.qa.map(function(q){
-      return { questionId: q.questionId, questionText: q.questionText, optional: !!q.optional, group: q.group || '', asked: q.asked, answerText: q.answerText, summary: summarize(q.answerText, 2) };
+      return { questionId: q.questionId, questionText: q.questionText, group: q.group || '', asked: q.asked, answerText: q.answerText, summary: summarize(q.answerText, 2) };
     });
     reviewDraft = {
       candidateName: setupPick.candidateName,
@@ -1538,12 +1723,10 @@
     var qaCards = d.qa.map(function(qa, i){
       var skipOk = questionSkipOk(qa, d.qa);
       var flag = qa.asked ? '' :
-        (skipOk === 'optional' ? '<span class="not-asked-flag" style="color:var(--text-muted);">optional — OK if skipped</span>'
-         : skipOk === 'group-covered' ? '<span class="not-asked-flag" style="color:var(--text-muted);">not needed — another question in this set was covered</span>'
+        (skipOk === 'group-covered' ? '<span class="not-asked-flag" style="color:var(--text-muted);">not needed — another question in this set was covered</span>'
          : qa.group ? '<span class="not-asked-flag">choose one from this set — none detected yet</span>'
          : '<span class="not-asked-flag">not confidently detected — check transcript</span>');
-      var tagsHtml = (qa.optional ? ' <span class="pill pill-muted">Optional</span>' : '') +
-        (qa.group ? ' <span class="pill pill-muted" title="Only one question in this set needs to be asked">Choose one</span>' : '');
+      var tagsHtml = (qa.group ? ' <span class="pill pill-muted" title="Only one question in this set needs to be asked">Choose one</span>' : '');
       return '<div class="qa-card">' +
         '<div class="q-text">' + escapeHtml(qa.questionText) + tagsHtml + ' ' + flag + '</div>' +
         '<textarea data-i="' + i + '" data-field="answerText">' + escapeHtml(qa.answerText) + '</textarea>' +
