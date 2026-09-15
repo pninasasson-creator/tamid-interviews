@@ -456,7 +456,12 @@
   // (not pasted transcripts) before it's shown or matched. If it keeps
   // mishearing it a different way, add the exact wrong word/phrase here.
   var WORD_CORRECTIONS = [
-    { pattern: /\b(timid|tamid|ta ?mid|tuh ?mid|ta ?meed|tuh ?meed|ta ?mead|tuh ?mead|ta ?need|tommy ?d|tam+id|tam+eed|tammy'?d)\b/gi, replacement: 'TAMID' }
+    { pattern: /\b(timid|tamid|ta ?mid|tuh ?mid|tah[ -]?meed|ta ?meed|tuh ?meed|ta ?mead|tuh ?mead|ta ?need|tommy ?d|tam+id|tam+eed|tammy'?d)\b/gi, replacement: 'TAMID' },
+    // TAMID is pronounced "tah-meed". Only correct the ambiguous "to me"
+    // in club-specific phrases; ordinary answers like "important to me"
+    // and "tell me about yourself" must retain their original meaning.
+    { pattern: /\b((?:join(?:ing|ed)?|appl(?:y|ying|ied)\s+to|(?:good|great|strong|best|right)\s+fit\s+for|interested\s+in|interest\s+in|contribut(?:e|ing)\s+to|bring\s+to|attracted\s+you\s+to|drew\s+you\s+to|know\s+about|heard\s+about)\s+)(?:to|too|two)\s+me\b/gi, replacement: '$1TAMID' },
+    { pattern: /\b(why\s+(?:should|would)\s+)(?:to|too|two)\s+me(?=\s+(?:want|choose|pick|accept|select|be\s+interested\s+in)\s+you\b)/gi, replacement: '$1TAMID' }
   ];
   function applyWordCorrections(text){
     var out = text;
