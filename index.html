@@ -327,7 +327,7 @@
 
 <div id="shell-root"></div>
 
-<script id="app-state" type="application/json">{"version": 1, "candidates": [{"id": "cand_seed1", "name": "John Doe", "email": "john@example.com", "date": "", "timeSlot": "", "interviewer": "", "notetaker": ""}, {"id": "cand_seed2", "name": "Jane Smith", "email": "jane@example.com", "date": "", "timeSlot": "", "interviewer": "", "notetaker": ""}], "questions": [{"id": "q_seed1", "number": 1, "text": "Can you make the meeting time?"}, {"id": "q_seed2", "number": 2, "text": "Tell us a little bit about yourself"}, {"id": "q_seed3", "number": 3, "text": "Why do you want to join TAMID?"}, {"id": "q_seed4", "number": 4, "text": "Why do you believe you are a good fit for TAMID"}, {"id": "q_seed5", "number": 5, "text": "What on your resume are you most proud of?"}, {"id": "q_seed6", "number": 6, "text": "What is something that is not on your resume that you believe we should know?"}, {"id": "q_seed7", "number": 7, "text": "Tell us about a time you struggled and how you overcame it"}, {"id": "q_seed8", "number": 8, "text": "What are your biggest strengths and weaknesses?"}, {"id": "q_seed9", "number": 9, "text": "How would your friends describe you?"}, {"id": "q_seed10", "number": 10, "text": "Give us an example of the last time you worked well in a group? What role do you usually play in a group?"}], "interviews": []}</script>
+<script id="app-state" type="application/json">{"version": 1, "candidates": [{"id": "cand_seed1", "name": "John Doe", "email": "john@example.com", "date": "", "timeSlot": "", "interviewer": "", "notetaker": ""}, {"id": "cand_seed2", "name": "Jane Smith", "email": "jane@example.com", "date": "", "timeSlot": "", "interviewer": "", "notetaker": ""}], "questions": [{"id": "q_seed1", "number": 1, "text": "Tell us a little bit about yourself", "group": ""}, {"id": "q_seed2", "number": 2, "text": "Why are you interested in joining TAMID? Why should TAMID be interested in you?", "group": ""}, {"id": "q_seed3", "number": 3, "text": "What role do you usually play in a group? Can you give us an example of a time you worked well in a group?", "group": ""}, {"id": "q_seed4", "number": 4, "text": "What are your biggest strengths and weaknesses?", "group": "choose-4-or-5"}, {"id": "q_seed5", "number": 5, "text": "Tell us about a time you faced a challenge and how you overcame it", "group": "choose-4-or-5"}, {"id": "q_seed6", "number": 6, "text": "How will you remain involved and prioritize TAMID througout your college experience?", "group": ""}, {"id": "q_seed7", "number": 7, "text": "If you were a restaurant in New Orleans what would you be and why?", "group": ""}, {"id": "q_seed8", "number": 8, "text": "Can you make the meetings at 5:30 on Mondays?", "group": ""}, {"id": "q_seed9", "number": 9, "text": "Do you have any questions for us?", "group": ""}], "interviews": []}</script>
 <script>window.__SHEETS_URL__ = "https://script.google.com/macros/s/AKfycbwDav0OO2V0m3sRarhA8Nr3eA2_XNILB8aHKPf-0nvwK__a0VTsT4kWRp4mQ2urotrODQ/exec";</script>
 <script id="lib-xlsx" src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script id="app-script">
@@ -475,22 +475,9 @@
   function contentTokens(str){
     return normalize(str).split(' ').filter(function(w){ return w.length > 1 && !STOPWORDS[w]; });
   }
-  /* ---- Smarter matching: word stems + synonyms + interview flow ----
-     The interviewer rarely reads a question word-for-word, so instead of
-     requiring the exact words this:
-       1. reduces words to their stem (joining/joined -> join),
-       2. maps related words onto one idea (struggle / challenge / obstacle
-          / hard time all count as the same thing),
-       3. forgives small mis-hearings from the speech engine,
-       4. weights words that are unique to one question more heavily,
-       5. expects questions roughly in bank order — the NEXT question only
-          needs a light match, especially when the line sounds like a
-          question ("what", "tell us", "how would you"…) or follows a
-          transition ("moving on", "next question"),
-       6. makes it hard for a candidate's answer to accidentally jump the
-          app back to a question that was already asked.
-     If a real paraphrase still gets missed, add its words to a group in
-     SYNONYM_GROUPS below. */
+  /* Word stems and synonyms support summaries and multi-part answers.
+     Live question transitions use ordered prompt detection below; a shared
+     keyword alone never advances to a later question. */
   var SYNONYM_GROUPS = [
     ['join','apply','applicant','member','membership','recruit','recruitment','rush'],
     ['interest','want','excite','draw','drawn','attract','appeal','motivate','motivation','reason','choose','chose','pick'],
@@ -599,89 +586,121 @@
     return best;
   }
 
-  // jumps: optional [{at: utteranceIndex, questionId}] — manual "next
-  // question" / click-to-jump overrides from the recording screen.
-  function runMatching(utterances, questions, jumps){
-    jumps = jumps || [];
-    var model = buildQuestionModel(questions);
-    var qState = model.map(function(m){ return { q:m.q, m:m, asked:false, buffer:[] }; });
-    var idxById = {}; qState.forEach(function(x, i){ idxById[x.q.id] = i; });
-    var opening = [];
-    var current = -1;
-    var cueWindow = 0;
-    var prevToks = null, prevQuestionLike = false;
-
-    function isSatisfied(i){
-      var x = qState[i];
-      if (x.asked) return true;
-      return !!(x.q.group && qState.some(function(o){ return o.q.group === x.q.group && o.asked; }));
+  // Detect a spoken question, not isolated words that can occur in an answer.
+  // The next-question gate below is authoritative: scores never skip the queue.
+  var ORDERED_PROMPTS = {
+    intro: [ /\b(?:tell|share with)\s+(?:us|me)\s+(?:(?:a\s+)?(?:little|bit|little bit)\s+)?about\s+yourself\b[?.!]?/i, /\b(?:can|could|would)\s+you\s+introduce\s+yourself\b[?.!]?/i ],
+    interest: [ /\bwhy\s+(?:(?:are|were)\s+you\s+(?:so\s+)?interested\s+in\s+(?:joining|applying\s+to)|(?:do|did)\s+you\s+want\s+to\s+(?:join|apply\s+to)|(?:are|were)\s+you\s+interested\s+in|(?:join|TAMID))\b(?:\s+(?:TAMID|to\s+me(?:et|ed)?|too\s+me|two\s+me|ta\s+meed)(?:\s+her)?)?[?.!]?/i, /\bwhat\s+(?:drew|draws|attracted|attracts)\s+you\s+to\s+(?:TAMID|to\s+me(?:et)?)\b[?.!]?/i ],
+    team: [ /\bwhat\s+(?:kind\s+of\s+)?role\s+do\s+you\s+(?:(?:usually|typically|normally)\s+)?(?:play|take|have)\s+(?:in|on)\s+(?:a\s+)?(?:group|team)\b[?.!]?/i, /\b(?:can\s+you\s+)?give\s+(?:us|me)\s+an?\s+example\s+of\s+(?:a|the)\s+time\s+you\s+worked\s+well\s+(?:in|on|with)\s+a\s+(?:group|team)\b[?.!]?/i ],
+    strengths: [ /\bwhat\s+(?:are|would\s+you\s+say\s+are)\s+your\s+(?:(?:biggest|greatest|main|top)\s+)?strengths?(?:\s+and\s+(?:your\s+)?weakness(?:es)?)?\b[?.!]?/i, /\b(?:tell|talk\s+to)\s+(?:us|me)\s+about\s+your\s+strengths?(?:\s+and\s+weakness(?:es)?)?\b[?.!]?/i ],
+    challenge: [ /\b(?:tell\s+(?:us|me)\s+about|describe|give\s+(?:us|me)\s+an?\s+example\s+of)\s+a\s+time\s+(?:when\s+)?you\s+(?:faced\s+(?:a\s+)?(?:challenge|obstacle|difficulty)|struggled|overcame\s+(?:a\s+)?(?:challenge|obstacle))(?:\s+and\s+how\s+you\s+(?:overcame|handled|dealt\s+with)\s+it)?\b[?.!]?/i ],
+    commitment: [ /\bhow\s+(?:will|would|do)\s+you\s+(?:plan\s+to\s+)?(?:remain|stay|keep)\s+involved(?:\s+(?:in\s+)?(?:TAMID|to\s+me(?:et)?))?(?:\s+(?:and|in)\s+prioritize\s+(?:TAMID|to\s+me(?:et)?))?(?:\s+(?:throughout|through|during)\s+(?:your\s+)?(?:whole\s+)?(?:entire\s+)?college\s+(?:experience|career|years))?\b[?.!]?/i, /\b(?:how|what\s+are\s+the\s+ways)\s+(?:that\s+)?(?:will|would|do)?\s*you\s+(?:would\s+)?(?:like\s+to\s+)?(?:remain|stay)\s+involved(?:\s+and\s+prioritize\s+(?:TAMID|to\s+me(?:et)?))?(?:\s+throughout\s+your\s+college\s+experience)?\b[?.!]?/i ],
+    restaurant: [ /\bif\s+you\s+(?:were|are|could\s+be)\s+(?:a|any)\s+restaurant\s+in\s+(?:New\s+Orleans|NOLA)(?:\s+what\s+would\s+you\s+be(?:\s+and\s+why)?)?\b[?.!]?/i, /\bwhat\s+restaurant\s+in\s+(?:New\s+Orleans|NOLA)\s+would\s+you\s+be(?:\s+and\s+why)?\b[?.!]?/i ],
+    meetings: [ /\byou\s+can\s+make\s+(?:the\s+)?meetings?\s+at\s+(?:5\s*:\s*30|five[ -]+thirty)\s+on\s+Mondays?\s+right\b[?.!]?/i, /\b(?:can|could|will|would|are)\s+you\s+(?:be\s+able\s+to\s+)?(?:make|attend|available\s+for)\s+(?:the\s+)?(?:meetings?\s+(?:at|on)\s+)?(?:5\s*[:.]\s*30|five[ -]+thirty)(?:\s+(?:pm|p\.?m\.?))?(?:\s+meetings?)?(?:\s+on)?\s+Mondays?\b[?.!]?/i, /\b(?:can|could|will|would)\s+you\s+(?:make|attend)\s+(?:the\s+)?(?:Monday\s+meetings?|meetings?\s+on\s+Mondays?)(?:\s+at\s+(?:5\s*:\s*30|five[ -]+thirty))?\b[?.!]?/i, /\bconfirm\s+(?:that\s+)?you\s+can\s+make\s+(?:the\s+)?(?:meetings?\s+at\s+)?(?:5\s*:\s*30|five[ -]+thirty)\s+(?:meetings?\s+)?on\s+Mondays?\b[?.!]?/i ],
+    questions: [ /\b(?:do|did)\s+you\s+have\s+(?:any\s+)?questions?\s+for\s+(?:us|me)\b[?.!]?/i, /\b(?:are\s+there\s+)?any\s+questions?\s+(?:you\s+(?:have|want\s+to\s+ask)\s+)?for\s+(?:us|me)\b[?.!]?/i, /\bwhat\s+questions?\s+do\s+you\s+have\s+for\s+(?:us|me)\b[?.!]?/i ]
+  };
+  function orderedQuestionKind(q){
+    var s = normalize(q.text);
+    if (/about yourself|introduce yourself/.test(s)) return 'intro';
+    if (/strength/.test(s)) return 'strengths';
+    if (/challenge|struggl|obstacle/.test(s)) return 'challenge';
+    if (/remain involved|stay involved|prioritize/.test(s)) return 'commitment';
+    if (/restaurant/.test(s)) return 'restaurant';
+    if (/meeting/.test(s)) return 'meetings';
+    if (/questions for us|questions for me/.test(s)) return 'questions';
+    if (/role|worked well in a group/.test(s)) return 'team';
+    if (/join|interested in/.test(s)) return 'interest';
+    return '';
+  }
+  function hasTamidChoice(questions){
+    return questions.length === 9 && orderedQuestionKind(questions[3]) === 'strengths' && orderedQuestionKind(questions[4]) === 'challenge';
+  }
+  function orderedQuestions(questions){
+    var choice = hasTamidChoice(questions || []);
+    return (questions || []).map(function(q, i){
+      return Object.assign({}, q, choice ? {group: (i === 3 || i === 4) ? 'choose-4-or-5' : ''} : {});
+    });
+  }
+  function nextQuestionIndexes(questions, current){
+    if (current >= questions.length - 1) return [];
+    if (hasTamidChoice(questions)){
+      if (current === 2) return [3, 4];
+      if (current === 3 || current === 4) return [5];
     }
-    // "Expected next": the next unasked question after the current one,
-    // and also the earliest unasked one (interviewers who jump ahead
-    // usually come back to where they left off).
-    function expectedSet(){
-      var e = {};
-      for (var k = current + 1; k < qState.length; k++) if (!isSatisfied(k)){ e[k] = true; break; }
-      for (var k2 = 0; k2 < qState.length; k2++) if (!isSatisfied(k2)){ e[k2] = true; break; }
-      return e;
-    }
-
-    utterances.forEach(function(u, ui){
-      jumps.forEach(function(j){
-        if (j.at === ui && idxById.hasOwnProperty(j.questionId)){ current = idxById[j.questionId]; qState[current].asked = true; cueWindow = 0; }
-      });
-      var norm = normalize(u);
-      // Long lines are almost always the candidate answering. Only treat one
-      // as a question if it STARTS like a question (Chrome sometimes glues
-      // the question and the start of the answer into one line).
-      var wordCount = norm ? norm.split(' ').length : 0;
-      var isLong = wordCount > 30;
-      var questionLike = isLong
-        ? QUESTION_OPENER.test(norm.split(' ').slice(0, 10).join(' '))
-        : (QUESTION_OPENER.test(norm) || QUESTION_PHRASE.test(norm) || /\?\s*$/.test(u));
-      if (TRANSITION_CUE.test(norm)) cueWindow = 3;
-      var uToks = conceptTokens(norm.replace(new RegExp(TRANSITION_CUE.source, 'g'), ' '));
-      var joined = prevToks ? prevToks.concat(uToks) : null;
-      var expected = expectedSet();
-
-      var best = -1, bestMargin = -1;
-      qState.forEach(function(x, i){
-        if (i === current) return;
-        var sc = scoreUtterance(uToks, x.m);
-        // a question often gets split over two lines ("so what are your" /
-        // "strengths and weaknesses"), so the line before counts too
-        var ql = questionLike || prevQuestionLike;
-        if (joined) sc = Math.max(sc, scoreUtterance(joined, x.m) * 0.9);
-        var T;
-        if (x.asked) T = ql ? 0.7 : 0.85;                                  // going back: needs a strong match
-        else if (expected[i]) T = cueWindow ? 0.2 : (ql ? 0.3 : 0.65);
-        else T = (ql ? 0.42 : 0.75) - (cueWindow ? 0.07 : 0);
-        if (isLong && !questionLike) T += 0.3;                             // a long answer that happens to share words
-        var margin = sc - T;
-        if (sc > 0 && margin >= 0 && margin > bestMargin){ bestMargin = margin; best = i; }
-      });
-
-      if (best >= 0){
-        current = best;
-        qState[best].asked = true;
-        cueWindow = 0;
-        prevToks = null; prevQuestionLike = false;
-      } else {
-        if (current >= 0) qState[current].buffer.push(u);
-        else opening.push(u);
-        if (cueWindow) cueWindow--;
-        prevToks = uToks; prevQuestionLike = questionLike;
+    return [current + 1];
+  }
+  function findOrderedPrompt(text, q){
+    var patterns = ORDERED_PROMPTS[orderedQuestionKind(q)] || [];
+    // Keep edited/custom questions usable when read as written.
+    var exact = String(q.text || '').replace(/^\s*\d+[.)]\s*/, '').trim().replace(/[?.!]+$/, '');
+    if (exact) patterns = patterns.concat([new RegExp(exact.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+') + '[?.!]?', 'i')]);
+    var best = null;
+    patterns.forEach(function(re){
+      var m = re.exec(text);
+      // A multi-part prompt belongs to one question. Consume its second
+      // part too when speech recognition changes the spelling of TAMID.
+      if (m){
+        var continuation = orderedQuestionKind(q) === 'interest'
+          ? /^[\s?.,]*(?:and\s+)?why\s+(?:should|would)(?:\s+[^\s?.!]+){1,5}?\s+(?:be\s+)?interested\s+in\s+you\b[?.!]?/i
+          : orderedQuestionKind(q) === 'team'
+            ? /^[\s?.,]*(?:and\s+)?(?:(?:can|could)\s+you\s+)?give\s+(?:us|me)\s+an?\s+example\s+of\s+(?:a|the)\s+time(?:\s+you\s+worked\s+well\s+(?:in|on|with)\s+a\s+(?:group|team))?\b[?.!]?/i
+            : null;
+        var extra = continuation && continuation.exec(text.slice(m.index + m[0].length));
+        if (extra) m[0] += extra[0];
+      }
+      if (m && (!best || m.index < best.start || (m.index === best.start && m[0].length > best.end - best.start))){
+        best = {start:m.index, end:m.index + m[0].length};
       }
     });
-    // a manual jump made after the last line still sets the current question
-    jumps.forEach(function(j){
-      if (j.at >= utterances.length && idxById.hasOwnProperty(j.questionId)){ current = idxById[j.questionId]; qState[current].asked = true; }
-    });
+    return best;
+  }
+
+  // Rebuild from the original utterances so split speech results can form one
+  // question, and question + answer in one result does not discard the answer.
+  // Manual advances are boundaries too, and obey the very same order rules.
+  function runMatching(utterances, questions, jumps){
+    questions = orderedQuestions(questions);
+    var qState = questions.map(function(q){ return {q:q, asked:false, buffer:[]}; });
+    var current = -1, opening = [];
+    function keep(text){
+      text = text.trim();
+      if (text) (current < 0 ? opening : qState[current].buffer).push(text);
+    }
+    function process(text){
+      var remaining = text;
+      while (remaining){
+        var best = null;
+        nextQuestionIndexes(questions, current).forEach(function(i){
+          var m = findOrderedPrompt(remaining, questions[i]);
+          if (m && (!best || m.start < best.start)) best = {index:i, start:m.start, end:m.end};
+        });
+        if (!best){ keep(remaining); break; }
+        keep(remaining.slice(0, best.start));
+        current = best.index;
+        qState[current].asked = true;
+        remaining = remaining.slice(best.end);
+      }
+    }
+    var pending = [];
+    for (var at = 0; at <= utterances.length; at++){
+      var here = (jumps || []).filter(function(j){ return j.at === at; });
+      if (here.length || at === utterances.length){
+        process(pending.join(' '));
+        pending = [];
+        here.forEach(function(j){
+          var target = questions.findIndex(function(q){ return q.id === j.questionId; });
+          if (nextQuestionIndexes(questions, current).indexOf(target) >= 0){
+            current = target; qState[current].asked = true;
+          }
+        });
+      }
+      if (at < utterances.length) pending.push(utterances[at]);
+    }
     return {
       opening: opening.join(' '),
-      currentQuestionId: current >= 0 ? qState[current].q.id : null,
-      qa: qState.map(function(qs){
-        return { questionId: qs.q.id, questionText: qs.q.text, group: qs.q.group || '', asked: qs.asked, answerText: qs.buffer.join(' ') };
+      currentQuestionId: current < 0 ? null : questions[current].id,
+      qa: qState.map(function(x){
+        return {questionId:x.q.id, questionText:x.q.text, group:x.q.group || '', asked:x.asked, answerText:x.buffer.join(' ')};
       })
     };
   }
@@ -1120,7 +1139,7 @@
       .then(function(res){ if (!res.ok) throw new Error('HTTP ' + res.status); return res.json(); })
       .then(function(data){
         if (data && Array.isArray(data.candidates)) state.candidates = normalizeCandidates(data.candidates);
-        if (data && Array.isArray(data.questions)) state.questions = data.questions;
+        if (data && Array.isArray(data.questions)) state.questions = orderedQuestions(data.questions);
         if (data && Array.isArray(data.interviews)) state.interviews = dedupeInterviews(data.interviews);
         saveLocal(state);
         setSyncIndicator(false);
@@ -1533,6 +1552,7 @@
   }
 
   function renderView(){
+    state.questions = orderedQuestions(state.questions);
     var oldRoot = document.getElementById('view-root');
     if (!oldRoot) return;
     // Swap in a fresh, listener-free container before wiring it up again —
@@ -1967,10 +1987,10 @@
       '</div>' +
     '</div>' +
     '<div class="rec-layout">' +
-      '<div><p class="hint" style="margin:0 0 8px;">Click a question to jump to it if the app misses one.</p><div class="q-rail" id="q-rail">' + qItems + '</div></div>' +
+      '<div><p class="hint" style="margin:0 0 8px;">Questions follow 1 → 2 → 3 → 4 or 5 → 6 → 7 → 8 → 9. If detection misses a transition, select the next question here.</p><div class="q-rail" id="q-rail">' + qItems + '</div></div>' +
       '<div>' +
         '<div class="transcript-panel" id="transcript-panel"><p class="hint">Listening… speak naturally, questions are detected automatically as you ask them (no need to read them word-for-word).</p></div>' +
-        '<div class="rec-footer"><span class="hint">The app matches what’s said against your question bank — double-check on the next screen before submitting.</span>' +
+        '<div class="rec-footer"><span class="hint">Only the next question can be detected. Choose either 4 or 5, then continue to 6. Review answers before submitting.</span>' +
         '<button class="btn btn-sm" id="switch-to-paste">Not working? Switch to paste transcript</button></div>' +
       '</div>' +
     '</div>';
@@ -2128,10 +2148,17 @@
     renderTranscript('');
   }
 
-  // Manual override: everything said from now on belongs to this question
-  // (auto-detection keeps running afterwards).
+  // Manual advances cannot skip required questions or go backwards.
   function jumpToQuestion(qid){
     if (!recSession || !qid) return;
+    var draft = recSession.draft || runMatching(recSession.utterances, state.questions, recSession.jumps);
+    var cur = state.questions.findIndex(function(q){ return q.id === draft.currentQuestionId; });
+    var target = state.questions.findIndex(function(q){ return q.id === qid; });
+    if (target === cur) return;
+    if (nextQuestionIndexes(state.questions, cur).indexOf(target) < 0){
+      toast('Follow the question order. Only questions 4 and 5 are a choose-one pair.', 'warn');
+      return;
+    }
     recSession.jumps.push({ at: recSession.utterances.length, questionId: qid });
     recSession.draft = runMatching(recSession.utterances, state.questions, recSession.jumps);
     updateQRail(recSession.draft);
@@ -2139,16 +2166,20 @@
   function skipToNextQuestion(){
     if (!recSession) return;
     var draft = recSession.draft || runMatching(recSession.utterances, state.questions, recSession.jumps);
-    var qs = state.questions;
-    var cur = -1;
-    qs.forEach(function(q, i){ if (q.id === draft.currentQuestionId) cur = i; });
-    if (cur >= qs.length - 1){ toast('That’s the last question — press Stop & review when you’re done.'); return; }
-    jumpToQuestion(qs[cur + 1].id);
+    var cur = state.questions.findIndex(function(q){ return q.id === draft.currentQuestionId; });
+    var next = nextQuestionIndexes(state.questions, cur);
+    if (!next.length){ toast('That’s the last question — press Stop & review when you’re done.'); return; }
+    if (next.length > 1){ toast('Choose question 4 or 5 in the question list. After either one, you’ll go to question 6.'); return; }
+    jumpToQuestion(state.questions[next[0]].id);
   }
 
   function updateQRail(draft){
     var rail = document.getElementById('q-rail');
     if (!rail) return;
+    var cur = state.questions.findIndex(function(q){ return q.id === draft.currentQuestionId; });
+    var next = nextQuestionIndexes(state.questions, cur);
+    var nextButton = document.getElementById('next-q-btn');
+    if (nextButton) nextButton.textContent = next.length > 1 ? 'Choose 4 or 5 →' : 'Next question →';
     var byId = {};
     draft.qa.forEach(function(q){ byId[q.questionId] = q; });
     Array.prototype.forEach.call(rail.querySelectorAll('.q-rail-item'), function(item){
@@ -2156,7 +2187,13 @@
       var dot = item.querySelector('.q-dot');
       item.classList.remove('current', 'done');
       if (dot) dot.textContent = '';
-      if (!q || !q.asked) return;
+      if (!q || !q.asked){
+        if (q && q.group && draft.qa.some(function(other){ return other.group === q.group && other.asked; })){
+          if (dot) dot.textContent = '–';
+          item.title = 'Not needed — the other choice was asked.';
+        }
+        return;
+      }
       if (q.questionId === draft.currentQuestionId){
         item.classList.add('current');
       } else {
